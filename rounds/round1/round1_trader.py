@@ -48,4 +48,7 @@ class Trader:
         # some logic for squid ink
         squid_ink_fair = 0
 
+        
+
         return result, conversions, traderData
+``
