@@ -5,6 +5,9 @@ import jsonpickle
 import numpy as np
 import math
 
+
+#! TODO: CREATE FUNCTION TO FORECAST VOLATILITY FOR SQUID INK AND KELP AND CALL IN RUN METHOD
+#! FIND PATTERNS IN SQUID INK PRICE OR VOLATILITY USING TIME SERIES ANALYSIS
 class Trader:
     def __init__(self):
         self.KELP_prices = []
@@ -20,7 +23,7 @@ class Trader:
 
         baaf = min([price for price in order_depth.sell_orders.keys() if price > fair_value + 1])
         bbbf = max([price for price in order_depth.buy_orders.keys() if price < fair_value - 1])
-
+        #! TODO: TRY DIFFERENT HYPERPAREMETERS FOR MARKET MAKING (VOLOTAILITY CALCULATION)
         if len(order_depth.sell_orders) != 0:
             best_ask = min(order_depth.sell_orders.keys())
             best_ask_amount = -1*order_depth.sell_orders[best_ask]
@@ -28,6 +31,7 @@ class Trader:
                 quantity = min(best_ask_amount, position_limit - position) # max amt to buy 
                 if quantity > 0:
                     orders.append(Order("RAINFOREST_RESIN", best_ask, quantity)) 
+
                     buy_order_volume += quantity
 
         if len(order_depth.buy_orders) != 0:
@@ -44,7 +48,7 @@ class Trader:
         buy_quantity = position_limit - (position + buy_order_volume)
         if buy_quantity > 0:
             orders.append(Order("RAINFOREST_RESIN", bbbf + 1, buy_quantity))  # Buy order
-
+        #! TODO: TRY MARKET MAKIING AROUND THE FAIR VALUE INSTEAD OF BBF AND BAAF
         sell_quantity = position_limit + (position - sell_order_volume)
         if sell_quantity > 0:
             orders.append(Order("RAINFOREST_RESIN", baaf - 1, -sell_quantity))  # Sell order
@@ -57,6 +61,7 @@ class Trader:
         fair = round(fair_value)
         fair_for_bid = math.floor(fair_value)
         fair_for_ask = math.ceil(fair_value)
+        #! TODO: TRY OUT DIFFERENT METHODS OF OFLLOADING POSITION
         # fair_for_ask = fair_for_bid = fair
 
         buy_quantity = position_limit - (position + buy_order_volume)
@@ -65,6 +70,7 @@ class Trader:
         if position_after_take > 0:
             if fair_for_ask in order_depth.buy_orders.keys():
                 clear_quantity = min(order_depth.buy_orders[fair_for_ask], position_after_take)
+                #! TODO: SEE IF WE WANT TO OFFLOAD ENTIRE POSITIONS
                 # clear_quantity = position_after_take
                 sent_quantity = min(sell_quantity, clear_quantity)
                 orders.append(Order(product, fair_for_ask, -abs(sent_quantity)))
@@ -87,6 +93,8 @@ class Trader:
             best_bid = max(order_depth.buy_orders.keys())
             mid_price = (best_ask + best_bid) / 2
             return mid_price
+        #! TODO: TEST OUT DIFFERENT METHODS OF CALCULATING FAIR VALUE MM VWAP ECT
+
         elif method == "mid_price_with_vol_filter":
             if len([price for price in order_depth.sell_orders.keys() if abs(order_depth.sell_orders[price]) >= min_vol]) ==0 or len([price for price in order_depth.buy_orders.keys() if abs(order_depth.buy_orders[price]) >= min_vol]) ==0:
                 best_ask = min(order_depth.sell_orders.keys())
@@ -111,6 +119,7 @@ class Trader:
             best_bid = max(order_depth.buy_orders.keys())
             filtered_ask = [price for price in order_depth.sell_orders.keys() if abs(order_depth.sell_orders[price]) >= 15]
             filtered_bid = [price for price in order_depth.buy_orders.keys() if abs(order_depth.buy_orders[price]) >= 15]
+            #! 15?? TRY DIFFERENT VOLUME THRESHOLDS
             mm_ask = min(filtered_ask) if len(filtered_ask) > 0 else best_ask
             mm_bid = max(filtered_bid) if len(filtered_bid) > 0 else best_bid
             
@@ -131,26 +140,6 @@ class Trader:
 
             fair_value = mmmid_price
 
-            # take all orders we can
-            # for ask in order_depth.sell_orders.keys():
-            #     if ask <= fair_value - KELP_take_width:
-            #         ask_amount = -1 * order_depth.sell_orders[ask]
-            #         if ask_amount <= 20:
-            #             quantity = min(ask_amount, position_limit - position)
-            #             if quantity > 0:
-            #                 orders.append(Order("KELP", ask, quantity))
-            #                 buy_order_volume += quantity
-
-            # for bid in order_depth.buy_orders.keys():
-            #     if bid >= fair_value + KELP_take_width:
-            #         bid_amount = order_depth.buy_orders[bid]
-            #         if bid_amount <= 20:
-            #             quantity = min(bid_amount, position_limit + position)
-            #             if quantity > 0:
-            #                 orders.append(Order("KELP", bid, -1 * quantity))
-            #                 sell_order_volume += quantity
-
-            # only taking best bid/ask
 
             if best_ask <= fair_value - KELP_take_width:
                 ask_amount = -1 * order_depth.sell_orders[best_ask]
@@ -168,6 +157,8 @@ class Trader:
                         sell_order_volume += quantity
 
             buy_order_volume, sell_order_volume = self.clear_position_order(orders, order_depth, position, position_limit, "KELP", buy_order_volume, sell_order_volume, fair_value, 2)
+
+            #! MARKET MAKING, TRY NEW METHODS
 
             aaf = [price for price in order_depth.sell_orders.keys() if price > fair_value + 1]
             bbf = [price for price in order_depth.buy_orders.keys() if price < fair_value - 1]
@@ -191,8 +182,8 @@ class Trader:
         rfr_width = 2
         rfr_position_limit = 50
 
-        KELP_make_width = 3.5
-        KELP_take_width = 1
+        KELP_make_width = 3.5 #! TODO: CHANGE TO WIDTH BEING A FUNCTION OF DIFFERENCE WITH FAIR VALUE AND VOLATILITY
+        KELP_take_width = 1 #! TODO: CHANGE TO WIDTH BEING A FUNCTION OF DIFFERENCE WITH FAIR VALUE AND VOLATILITY
         KELP_position_limit = 50
         KELP_timemspan = 10
 
