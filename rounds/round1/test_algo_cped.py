@@ -6,6 +6,8 @@ import numpy as np
 import math
 
 
+def rounded(x):
+    return int(round(x))
 #! TODO: CREATE FUNCTION TO FORECAST VOLATILITY FOR SQUID INK AND KELP AND CALL IN RUN METHOD
 #! FIND PATTERNS IN SQUID INK PRICE OR VOLATILITY USING TIME SERIES ANALYSIS
 class Trader:
