@@ -21,14 +21,17 @@ class Trader:
         buy_order_volume = 0
         sell_order_volume = 0
 
-        baaf = min([price for price in order_depth.sell_orders.keys() if price > fair_value + 1])
-        bbbf = max([price for price in order_depth.buy_orders.keys() if price < fair_value - 1])
+        baaf = min(
+            [price for price in order_depth.sell_orders.keys() if price > fair_value + 1])
+        bbbf = max([price for price in order_depth.buy_orders.keys()
+                   if price < fair_value - 1])
         #! TODO: TRY DIFFERENT HYPERPAREMETERS FOR MARKET MAKING (VOLOTAILITY CALCULATION)
         if len(order_depth.sell_orders) != 0:
             best_ask = min(order_depth.sell_orders.keys())
             best_ask_amount = -1*order_depth.sell_orders[best_ask]
             if best_ask < fair_value:
-                quantity = min(best_ask_amount, position_limit - position) # max amt to buy 
+                quantity = min(best_ask_amount, position_limit -
+                               position)  # max amt to buy
                 if quantity > 0:
                     orders.append(Order("RAINFOREST_RESIN", rounded(best_ask), quantity))
                     buy_order_volume += quantity
@@ -37,12 +40,14 @@ class Trader:
             best_bid = max(order_depth.buy_orders.keys())
             best_bid_amount = order_depth.buy_orders[best_bid]
             if best_bid > fair_value:
-                quantity = min(best_bid_amount, position_limit + position) # should be the max we can sell 
+                # should be the max we can sell
+                quantity = min(best_bid_amount, position_limit + position)
                 if quantity > 0:
                     orders.append(Order("RAINFOREST_RESIN", rounded(best_bid), -1 * quantity))
                     sell_order_volume += quantity
 
-        buy_order_volume, sell_order_volume = self.clear_position_order(orders, order_depth, position, position_limit, "RAINFOREST_RESIN", buy_order_volume, sell_order_volume, fair_value, 1)
+        buy_order_volume, sell_order_volume = self.clear_position_order(
+            orders, order_depth, position, position_limit, "RAINFOREST_RESIN", buy_order_volume, sell_order_volume, fair_value, 1)
 
         buy_quantity = position_limit - (position + buy_order_volume)
         if buy_quantity > 0:
@@ -66,7 +71,8 @@ class Trader:
 
         if position_after_take > 0:
             if fair_for_ask in order_depth.buy_orders.keys():
-                clear_quantity = min(order_depth.buy_orders[fair_for_ask], position_after_take)
+                clear_quantity = min(
+                    order_depth.buy_orders[fair_for_ask], position_after_take)
                 #! TODO: SEE IF WE WANT TO OFFLOAD ENTIRE POSITIONS
                 # clear_quantity = position_after_take
                 sent_quantity = min(sell_quantity, clear_quantity)
@@ -75,7 +81,8 @@ class Trader:
 
         if position_after_take < 0:
             if fair_for_bid in order_depth.sell_orders.keys():
-                clear_quantity = min(abs(order_depth.sell_orders[fair_for_bid]), abs(position_after_take))
+                clear_quantity = min(
+                    abs(order_depth.sell_orders[fair_for_bid]), abs(position_after_take))
                 # clear_quantity = abs(position_after_take)
                 sent_quantity = min(buy_quantity, clear_quantity)
                 orders.append(Order(product, rounded(fair_for_bid), abs(sent_quantity)))
@@ -84,7 +91,7 @@ class Trader:
         return buy_order_volume, sell_order_volume
 
     # Method: mid_price,
-    def KELP_fair_value(self, order_depth: OrderDepth, method = "mid_price", min_vol = 0) -> float:
+    def KELP_fair_value(self, order_depth: OrderDepth, method="mid_price", min_vol=0) -> float:
         if method == "mid_price":
             best_ask = min(order_depth.sell_orders.keys())
             best_bid = max(order_depth.buy_orders.keys())
@@ -119,8 +126,11 @@ class Trader:
             mmmid_price = (mm_ask + mm_bid) / 2
             self.KELP_prices.append(mmmid_price)
 
-            volume = -1 * order_depth.sell_orders[best_ask] + order_depth.buy_orders[best_bid]
-            vwap = (best_bid * (-1) * order_depth.sell_orders[best_ask] + best_ask * order_depth.buy_orders[best_bid]) / volume
+            volume = -1 * \
+                order_depth.sell_orders[best_ask] + \
+                order_depth.buy_orders[best_bid]
+            vwap = (best_bid * (-1) * order_depth.sell_orders[best_ask] +
+                    best_ask * order_depth.buy_orders[best_bid]) / volume
             self.KELP_vwap.append({"vol": volume, "vwap": vwap})
 
             if len(self.KELP_vwap) > timespan:
@@ -147,7 +157,8 @@ class Trader:
                         orders.append(Order("KELP", rounded(best_bid), -1 * quantity))
                         sell_order_volume += quantity
 
-            buy_order_volume, sell_order_volume = self.clear_position_order(orders, order_depth, position, position_limit, "KELP", buy_order_volume, sell_order_volume, fair_value, 2)
+            buy_order_volume, sell_order_volume = self.clear_position_order(
+                orders, order_depth, position, position_limit, "KELP", buy_order_volume, sell_order_volume, fair_value, 2)
 
             #! MARKET MAKING, TRY NEW METHODS
 
@@ -176,7 +187,7 @@ class Trader:
         best_bid = max(order_depth.buy_orders.keys())
         mid_price = (best_ask + best_bid) / 2.0
 
-        offset = 1.0 #! TODO: adjust
+        offset = 1.0  # ! TODO: adjust
 
         if position < position_limit:
             buy_qty = position_limit - position
@@ -188,6 +199,55 @@ class Trader:
 
         return orders
 
+    def squid_ink_fetch_historical_data(self):
+        day_price_0_df = pd.read_csv(
+            "../round-1-island-data-bottle/prices_round_1_day_0.csv", delimiter=";")
+        day_price_m1_df = pd.read_csv(
+            "../round-1-island-data-bottle/prices_round_1_day_-1.csv", delimiter=";")
+        day_price_m2_df = pd.read_csv(
+            "../round-1-island-data-bottle/prices_round_1_day_-2.csv", delimiter=";")
+
+        merged_df = pd.concat(
+            [day_price_0_df, day_price_m1_df, day_price_m2_df])
+
+        squid_ink_df = merged_df[merged_df["product"] == "SQUID_INK"].copy()
+        return squid_ink_df
+
+    def squid_ink_mean_reversion(self):
+        # We want to combine this strategy with others to do directional trading at specific points
+        z_score_threshold = 1.5  # TODO: tune hyperparameter
+
+        squid_ink_df = self.squid_ink_fetch_historical_data()
+
+        mean_price = squid_ink_df['mid_price'].mean()
+        std_price = squid_ink_df['mid_price'].std()
+
+        if std_price == 0:
+            squid_ink_df['z_score'] = 0
+        else:
+            squid_ink_df['z_score'] = (
+                squid_ink_df['mid_price'] - mean_price) / std_price
+
+        squid_ink_df['mr_signal'] = 0  # 0 = hold, 1 = buy, -1 = sell
+        squid_ink_df.loc[squid_ink_df['z_score'] < -
+                         z_score_threshold, 'mr_signal'] = 1  # Buy signal
+        squid_ink_df.loc[squid_ink_df['z_score'] >
+                         z_score_threshold, 'mr_signal'] = -1  # Sell signal
+
+        return squid_ink_df
+
+    def momentum_strategy(self, lookback=1):
+        lookback = 3  # TODO: tune hyperparameter
+        squid_ink_df = self.squid_ink_fetch_historical_data()
+        squid_ink_df['price_change'] = squid_ink_df['mid_price'].diff(lookback)
+        squid_ink_df['momentum_signal'] = 0
+        squid_ink_df.loc[squid_ink_df['price_change']
+                         > 0, 'momentum_signal'] = 1  # Buy signal
+        squid_ink_df.loc[squid_ink_df['price_change']
+                         < 0, 'momentum_signal'] = -1  # Sell signal
+
+        return squid_ink_df
+
     def run(self, state: TradingState):
         result = {}
 
@@ -195,13 +255,15 @@ class Trader:
         rfr_width = 2
         rfr_position_limit = 50
 
-        KELP_make_width = 3.5 #! TODO: CHANGE TO WIDTH BEING A FUNCTION OF DIFFERENCE WITH FAIR VALUE AND VOLATILITY
-        KELP_take_width = 1 #! TODO: CHANGE TO WIDTH BEING A FUNCTION OF DIFFERENCE WITH FAIR VALUE AND VOLATILITY
+        # ! TODO: CHANGE TO WIDTH BEING A FUNCTION OF DIFFERENCE WITH FAIR VALUE AND VOLATILITY
+        KELP_make_width = 3.5
+        # ! TODO: CHANGE TO WIDTH BEING A FUNCTION OF DIFFERENCE WITH FAIR VALUE AND VOLATILITY
+        KELP_take_width = 1
         KELP_position_limit = 50
         KELP_timemspan = 10
 
-        squid_make_width = 3.0
-        squid_take_width = 1.0
+        squid_make_width = 3.0  # ! TODO: adjust
+        squid_take_width = 1.0  # ! TODO: adjust
         squid_position_limit = 50
         squid_timespan = 10
 
@@ -212,17 +274,20 @@ class Trader:
 
         if "RAINFOREST_RESIN" in state.order_depths:
             rfr_position = state.position["RAINFOREST_RESIN"] if "RAINFOREST_RESIN" in state.position else 0
-            rfr_orders = self.rfr_orders(state.order_depths["RAINFOREST_RESIN"], rfr_fair_value, rfr_width, rfr_position, rfr_position_limit)
+            rfr_orders = self.rfr_orders(
+                state.order_depths["RAINFOREST_RESIN"], rfr_fair_value, rfr_width, rfr_position, rfr_position_limit)
             result["RAINFOREST_RESIN"] = rfr_orders
 
         if "KELP" in state.order_depths:
             KELP_position = state.position["KELP"] if "KELP" in state.position else 0
-            KELP_orders = self.KELP_orders(state.order_depths["KELP"], KELP_timemspan, KELP_make_width, KELP_take_width, KELP_position, KELP_position_limit)
+            KELP_orders = self.KELP_orders(
+                state.order_depths["KELP"], KELP_timemspan, KELP_make_width, KELP_take_width, KELP_position, KELP_position_limit)
             result["KELP"] = KELP_orders
 
         if "SQUID_INK" in state.order_depths:
             squid_position = state.position["SQUID_INK"] if "SQUID_INK" in state.position else 0
-            squid_orders = self.SQUID_orders(state.order_depths["SQUID_INK"], squid_timespan, squid_make_width, squid_take_width, squid_position, squid_position_limit)
+            squid_orders = self.SQUID_orders(
+                state.order_depths["SQUID_INK"], squid_timespan, squid_make_width, squid_take_width, squid_position, squid_position_limit)
             result["SQUID_INK"] = squid_orders
 
         traderData = jsonpickle.encode({
