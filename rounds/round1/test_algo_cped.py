@@ -4,6 +4,7 @@ import string
 import jsonpickle
 import numpy as np
 import math
+import statistics
 
 
 def rounded(x):
@@ -14,8 +15,70 @@ class Trader:
     def __init__(self):
         self.KELP_prices = []
         self.KELP_vwap = []
+<<<<<<< HEAD
         self.SQUID_prices = []
         self.SQUID_vwap = []
+=======
+        self.SQUID_INK_prices = []
+        self.SQUID_INK_volatility_history = []
+
+    def garch_forecast(self, returns: List[float], omega: float, alpha: float, beta: float) -> np.ndarray:
+        #! GARCH(1,1) MODEL
+        #! VOLATILITY = OMEGA + ALPHA * (PRICE - VOLATILITY)**2 + BETA * VOLATILITY
+        #! OMEGA = 0.0001
+        #! ALPHA = 0.1
+        #! BETA = 0.8 # gonna self learn these with grid search
+
+        variance = np.zeros(len(returns))
+        variance[0] = statistics.pvariance(returns)
+        
+        for t in range(1, len(returns)):
+            variance[t] = omega + alpha * returns[t - 1]**2 + beta * variance[t - 1]
+        volatility = np.sqrt(variance)
+            
+        return volatility
+    
+
+    def garch_log_likelihood(self, returns: List[float], omega: float, alpha: float, beta: float) -> float:
+
+        volatility = self.garch_forecast(returns, omega, alpha, beta)
+        log_likelihood = 0.0
+        T = len(returns)
+        # Compute the log-likelihood assuming normally distributed returns
+        for t in range(T):
+            log_likelihood += -0.5 * (np.log(2 * np.pi) + np.log(volatility[t]) + (returns[t]**2 / volatility[t]))
+        return log_likelihood
+
+
+    def grid_search(self):
+        omega = 0.00001
+        alpha = 0.1
+        beta = 0.8
+
+        # Convert price history to returns
+        returns = []
+        for i in range(1, len(self.SQUID_INK_prices)):
+            returns.append((self.SQUID_INK_prices[i] - self.SQUID_INK_prices[i-1]) / self.SQUID_INK_prices[i-1])
+        returns = np.array(returns)
+
+        best_ll = -np.inf
+        best_params = (None, None, None)
+        # Create grids for parameter candidates
+        for omega_candidate in np.linspace(1e-8, 1e-5, 5):
+            for alpha_candidate in np.linspace(0.05, 0.15, 5):
+                for beta_candidate in np.linspace(0.80, 0.95, 5):
+                    # Ensure stationarity: alpha + beta < 1
+                    if alpha_candidate + beta_candidate < 1:
+                        ll = self.garch_log_likelihood(returns.tolist(), omega_candidate, alpha_candidate, beta_candidate)
+                        if ll > best_ll:
+                            best_ll = ll
+                            best_params = (omega_candidate, alpha_candidate, beta_candidate)
+
+        print("Optimal Parameters (omega, alpha, beta):", best_params)
+        print("Optimal Log-Likelihood:", best_ll)
+
+
+>>>>>>> 555b28d (added forecasted volatility with GARCH model and factoring in vol to spread sizes)
 
     def rfr_orders(self, order_depth: OrderDepth, fair_value: int, width: int, position: int, position_limit: int) -> List[Order]:
         orders: List[Order] = []
@@ -76,7 +139,6 @@ class Trader:
                 clear_quantity = min(
                     order_depth.buy_orders[fair_for_ask], position_after_take)
                 #! TODO: SEE IF WE WANT TO OFFLOAD ENTIRE POSITIONS
-                # clear_quantity = position_after_take
                 sent_quantity = min(sell_quantity, clear_quantity)
                 orders.append(Order(product, rounded(fair_for_ask), -abs(sent_quantity)))
                 sell_order_volume += abs(sent_quantity)
@@ -145,7 +207,7 @@ class Trader:
 
             if best_ask <= fair_value - KELP_take_width:
                 ask_amount = -1 * order_depth.sell_orders[best_ask]
-                if ask_amount <= 20:
+                if ask_amount <= 20:    #! WHY 20? WHY NOT 15 LIKE EARLIER? ARE WE TO ASSUME 20 IS OPTIMAL THRESDHOLD FOR POS EV? 
                     quantity = min(ask_amount, position_limit - position)
                     if quantity > 0:
                         orders.append(Order("KELP", rounded(best_ask), quantity))
@@ -162,7 +224,7 @@ class Trader:
             buy_order_volume, sell_order_volume = self.clear_position_order(
                 orders, order_depth, position, position_limit, "KELP", buy_order_volume, sell_order_volume, fair_value, 2)
 
-            #! MARKET MAKING, TRY NEW METHODS
+            #! MARKET MAKING, TRY NEW METHODS with different thresholders
 
             aaf = [price for price in order_depth.sell_orders.keys() if price > fair_value + 1]
             bbf = [price for price in order_depth.buy_orders.keys() if price < fair_value - 1]
