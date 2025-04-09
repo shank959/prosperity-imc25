@@ -5,12 +5,15 @@ import jsonpickle
 import numpy as np
 import math
 import statistics
+import pandas as pd
 
 
 def rounded(x):
     return int(round(x))
 #! TODO: CREATE FUNCTION TO FORECAST VOLATILITY FOR SQUID INK AND KELP AND CALL IN RUN METHOD
 #! FIND PATTERNS IN SQUID INK PRICE OR VOLATILITY USING TIME SERIES ANALYSIS
+
+
 class Trader:
     def __init__(self):
         self.KELP_prices = []
@@ -93,7 +96,8 @@ class Trader:
                 quantity = min(best_ask_amount, position_limit -
                                position)  # max amt to buy
                 if quantity > 0:
-                    orders.append(Order("RAINFOREST_RESIN", rounded(best_ask), quantity))
+                    orders.append(Order("RAINFOREST_RESIN",
+                                  rounded(best_ask), quantity))
                     buy_order_volume += quantity
 
         if len(order_depth.buy_orders) != 0:
@@ -103,7 +107,8 @@ class Trader:
                 # should be the max we can sell
                 quantity = min(best_bid_amount, position_limit + position)
                 if quantity > 0:
-                    orders.append(Order("RAINFOREST_RESIN", rounded(best_bid), -1 * quantity))
+                    orders.append(Order("RAINFOREST_RESIN",
+                                  rounded(best_bid), -1 * quantity))
                     sell_order_volume += quantity
 
         buy_order_volume, sell_order_volume = self.clear_position_order(
@@ -111,11 +116,13 @@ class Trader:
 
         buy_quantity = position_limit - (position + buy_order_volume)
         if buy_quantity > 0:
-            orders.append(Order("RAINFOREST_RESIN", rounded(bbbf + 1), buy_quantity))
+            orders.append(Order("RAINFOREST_RESIN",
+                          rounded(bbbf + 1), buy_quantity))
 
         sell_quantity = position_limit + (position - sell_order_volume)
         if sell_quantity > 0:
-            orders.append(Order("RAINFOREST_RESIN", rounded(baaf - 1), -sell_quantity))
+            orders.append(Order("RAINFOREST_RESIN",
+                          rounded(baaf - 1), -sell_quantity))
 
         return orders
 
@@ -135,7 +142,8 @@ class Trader:
                     order_depth.buy_orders[fair_for_ask], position_after_take)
                 #! TODO: SEE IF WE WANT TO OFFLOAD ENTIRE POSITIONS
                 sent_quantity = min(sell_quantity, clear_quantity)
-                orders.append(Order(product, rounded(fair_for_ask), -abs(sent_quantity)))
+                orders.append(Order(product, rounded(
+                    fair_for_ask), -abs(sent_quantity)))
                 sell_order_volume += abs(sent_quantity)
 
         if position_after_take < 0:
@@ -144,7 +152,8 @@ class Trader:
                     abs(order_depth.sell_orders[fair_for_bid]), abs(position_after_take))
                 # clear_quantity = abs(position_after_take)
                 sent_quantity = min(buy_quantity, clear_quantity)
-                orders.append(Order(product, rounded(fair_for_bid), abs(sent_quantity)))
+                orders.append(Order(product, rounded(
+                    fair_for_bid), abs(sent_quantity)))
                 buy_order_volume += abs(sent_quantity)
 
         return buy_order_volume, sell_order_volume
@@ -164,8 +173,10 @@ class Trader:
                 best_bid = max(order_depth.buy_orders.keys())
                 return (best_ask + best_bid) / 2
             else:
-                best_ask = min([price for price in order_depth.sell_orders.keys() if abs(order_depth.sell_orders[price]) >= min_vol])
-                best_bid = max([price for price in order_depth.buy_orders.keys() if abs(order_depth.buy_orders[price]) >= min_vol])
+                best_ask = min([price for price in order_depth.sell_orders.keys() if abs(
+                    order_depth.sell_orders[price]) >= min_vol])
+                best_bid = max([price for price in order_depth.buy_orders.keys() if abs(
+                    order_depth.buy_orders[price]) >= min_vol])
                 return (best_ask + best_bid) / 2
 
     def KELP_orders(self, order_depth: OrderDepth, timespan: int, width: float, KELP_take_width: float, position: int, position_limit: int) -> List[Order]:
@@ -177,8 +188,10 @@ class Trader:
         if len(order_depth.sell_orders) != 0 and len(order_depth.buy_orders) != 0:
             best_ask = min(order_depth.sell_orders.keys())
             best_bid = max(order_depth.buy_orders.keys())
-            filtered_ask = [price for price in order_depth.sell_orders.keys() if abs(order_depth.sell_orders[price]) >= 15]
-            filtered_bid = [price for price in order_depth.buy_orders.keys() if abs(order_depth.buy_orders[price]) >= 15]
+            filtered_ask = [price for price in order_depth.sell_orders.keys() if abs(
+                order_depth.sell_orders[price]) >= 15]
+            filtered_bid = [price for price in order_depth.buy_orders.keys() if abs(
+                order_depth.buy_orders[price]) >= 15]
             mm_ask = min(filtered_ask) if filtered_ask else best_ask
             mm_bid = max(filtered_bid) if filtered_bid else best_bid
 
@@ -202,10 +215,11 @@ class Trader:
 
             if best_ask <= fair_value - KELP_take_width:
                 ask_amount = -1 * order_depth.sell_orders[best_ask]
-                if ask_amount <= 20:    #! WHY 20? WHY NOT 15 LIKE EARLIER? ARE WE TO ASSUME 20 IS OPTIMAL THRESDHOLD FOR POS EV? 
+                if ask_amount <= 20:  # ! WHY 20? WHY NOT 15 LIKE EARLIER? ARE WE TO ASSUME 20 IS OPTIMAL THRESDHOLD FOR POS EV?
                     quantity = min(ask_amount, position_limit - position)
                     if quantity > 0:
-                        orders.append(Order("KELP", rounded(best_ask), quantity))
+                        orders.append(
+                            Order("KELP", rounded(best_ask), quantity))
                         buy_order_volume += quantity
 
             if best_bid >= fair_value + KELP_take_width:
@@ -213,7 +227,8 @@ class Trader:
                 if bid_amount <= 20:
                     quantity = min(bid_amount, position_limit + position)
                     if quantity > 0:
-                        orders.append(Order("KELP", rounded(best_bid), -1 * quantity))
+                        orders.append(
+                            Order("KELP", rounded(best_bid), -1 * quantity))
                         sell_order_volume += quantity
 
             buy_order_volume, sell_order_volume = self.clear_position_order(
@@ -221,8 +236,10 @@ class Trader:
 
             #! MARKET MAKING, TRY NEW METHODS with different thresholders
 
-            aaf = [price for price in order_depth.sell_orders.keys() if price > fair_value + 1]
-            bbf = [price for price in order_depth.buy_orders.keys() if price < fair_value - 1]
+            aaf = [price for price in order_depth.sell_orders.keys()
+                   if price > fair_value + 1]
+            bbf = [price for price in order_depth.buy_orders.keys()
+                   if price < fair_value - 1]
             baaf = min(aaf) if aaf else fair_value + 2
             bbbf = max(bbf) if bbf else fair_value - 2
 
@@ -251,11 +268,13 @@ class Trader:
 
         if position < position_limit:
             buy_qty = position_limit - position
-            orders.append(Order("SQUID_INK", rounded(mid_price - offset), buy_qty))
+            orders.append(
+                Order("SQUID_INK", rounded(mid_price - offset), buy_qty))
 
         if position > -position_limit:
             sell_qty = position_limit + position
-            orders.append(Order("SQUID_INK", rounded(mid_price + offset), -sell_qty))
+            orders.append(Order("SQUID_INK", rounded(
+                mid_price + offset), -sell_qty))
 
         return orders
     
