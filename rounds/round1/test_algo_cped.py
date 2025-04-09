@@ -20,8 +20,6 @@ class Trader:
 
         buy_order_volume = 0
         sell_order_volume = 0
-        # mm_ask = min([price for price in order_depth.sell_orders.keys() if abs(order_depth.sell_orders[price]) >= 20])
-        # mm_bid = max([price for price in order_depth.buy_orders.keys() if abs(order_depth.buy_orders[price]) >= 20])
 
         baaf = min([price for price in order_depth.sell_orders.keys() if price > fair_value + 1])
         bbbf = max([price for price in order_depth.buy_orders.keys() if price < fair_value - 1])
@@ -32,8 +30,7 @@ class Trader:
             if best_ask < fair_value:
                 quantity = min(best_ask_amount, position_limit - position) # max amt to buy 
                 if quantity > 0:
-                    orders.append(Order("RAINFOREST_RESIN", best_ask, quantity)) 
-
+                    orders.append(Order("RAINFOREST_RESIN", rounded(best_ask), quantity))
                     buy_order_volume += quantity
 
         if len(order_depth.buy_orders) != 0:
@@ -42,25 +39,23 @@ class Trader:
             if best_bid > fair_value:
                 quantity = min(best_bid_amount, position_limit + position) # should be the max we can sell 
                 if quantity > 0:
-                    orders.append(Order("RAINFOREST_RESIN", best_bid, -1 * quantity))
+                    orders.append(Order("RAINFOREST_RESIN", rounded(best_bid), -1 * quantity))
                     sell_order_volume += quantity
 
         buy_order_volume, sell_order_volume = self.clear_position_order(orders, order_depth, position, position_limit, "RAINFOREST_RESIN", buy_order_volume, sell_order_volume, fair_value, 1)
 
         buy_quantity = position_limit - (position + buy_order_volume)
         if buy_quantity > 0:
-            orders.append(Order("RAINFOREST_RESIN", bbbf + 1, buy_quantity))  # Buy order
-        #! TODO: TRY MARKET MAKIING AROUND THE FAIR VALUE INSTEAD OF BBF AND BAAF
+            orders.append(Order("RAINFOREST_RESIN", rounded(bbbf + 1), buy_quantity))
+
         sell_quantity = position_limit + (position - sell_order_volume)
         if sell_quantity > 0:
-            orders.append(Order("RAINFOREST_RESIN", baaf - 1, -sell_quantity))  # Sell order
+            orders.append(Order("RAINFOREST_RESIN", rounded(baaf - 1), -sell_quantity))
 
         return orders
 
     def clear_position_order(self, orders: List[Order], order_depth: OrderDepth, position: int, position_limit: int, product: str, buy_order_volume: int, sell_order_volume: int, fair_value: float, width: int) -> List[Order]:
-
         position_after_take = position + buy_order_volume - sell_order_volume
-        fair = round(fair_value)
         fair_for_bid = math.floor(fair_value)
         fair_for_ask = math.ceil(fair_value)
         #! TODO: TRY OUT DIFFERENT METHODS OF OFLLOADING POSITION
@@ -75,7 +70,7 @@ class Trader:
                 #! TODO: SEE IF WE WANT TO OFFLOAD ENTIRE POSITIONS
                 # clear_quantity = position_after_take
                 sent_quantity = min(sell_quantity, clear_quantity)
-                orders.append(Order(product, fair_for_ask, -abs(sent_quantity)))
+                orders.append(Order(product, rounded(fair_for_ask), -abs(sent_quantity)))
                 sell_order_volume += abs(sent_quantity)
 
         if position_after_take < 0:
@@ -83,7 +78,7 @@ class Trader:
                 clear_quantity = min(abs(order_depth.sell_orders[fair_for_bid]), abs(position_after_take))
                 # clear_quantity = abs(position_after_take)
                 sent_quantity = min(buy_quantity, clear_quantity)
-                orders.append(Order(product, fair_for_bid, abs(sent_quantity)))
+                orders.append(Order(product, rounded(fair_for_bid), abs(sent_quantity)))
                 buy_order_volume += abs(sent_quantity)
 
         return buy_order_volume, sell_order_volume
@@ -98,33 +93,29 @@ class Trader:
         #! TODO: TEST OUT DIFFERENT METHODS OF CALCULATING FAIR VALUE MM VWAP ECT
 
         elif method == "mid_price_with_vol_filter":
-            if len([price for price in order_depth.sell_orders.keys() if abs(order_depth.sell_orders[price]) >= min_vol]) ==0 or len([price for price in order_depth.buy_orders.keys() if abs(order_depth.buy_orders[price]) >= min_vol]) ==0:
+            if len([price for price in order_depth.sell_orders.keys() if abs(order_depth.sell_orders[price]) >= min_vol]) == 0 or len([price for price in order_depth.buy_orders.keys() if abs(order_depth.buy_orders[price]) >= min_vol]) == 0:
                 best_ask = min(order_depth.sell_orders.keys())
                 best_bid = max(order_depth.buy_orders.keys())
-                mid_price = (best_ask + best_bid) / 2
-                return mid_price
+                return (best_ask + best_bid) / 2
             else:
                 best_ask = min([price for price in order_depth.sell_orders.keys() if abs(order_depth.sell_orders[price]) >= min_vol])
                 best_bid = max([price for price in order_depth.buy_orders.keys() if abs(order_depth.buy_orders[price]) >= min_vol])
-                mid_price = (best_ask + best_bid) / 2
-            return mid_price
+                return (best_ask + best_bid) / 2
 
-    def KELP_orders(self, order_depth: OrderDepth, timespan:int, width: float, KELP_take_width: float, position: int, position_limit: int) -> List[Order]:
+    def KELP_orders(self, order_depth: OrderDepth, timespan: int, width: float, KELP_take_width: float, position: int, position_limit: int) -> List[Order]:
         orders: List[Order] = []
 
         buy_order_volume = 0
         sell_order_volume = 0
 
-        if len(order_depth.sell_orders) != 0 and len(order_depth.buy_orders) != 0:    
-
+        if len(order_depth.sell_orders) != 0 and len(order_depth.buy_orders) != 0:
             best_ask = min(order_depth.sell_orders.keys())
             best_bid = max(order_depth.buy_orders.keys())
             filtered_ask = [price for price in order_depth.sell_orders.keys() if abs(order_depth.sell_orders[price]) >= 15]
             filtered_bid = [price for price in order_depth.buy_orders.keys() if abs(order_depth.buy_orders[price]) >= 15]
-            #! 15?? TRY DIFFERENT VOLUME THRESHOLDS
-            mm_ask = min(filtered_ask) if len(filtered_ask) > 0 else best_ask
-            mm_bid = max(filtered_bid) if len(filtered_bid) > 0 else best_bid
-            
+            mm_ask = min(filtered_ask) if filtered_ask else best_ask
+            mm_bid = max(filtered_bid) if filtered_bid else best_bid
+
             mmmid_price = (mm_ask + mm_bid) / 2
             self.KELP_prices.append(mmmid_price)
 
@@ -138,24 +129,22 @@ class Trader:
             if len(self.KELP_prices) > timespan:
                 self.KELP_prices.pop(0)
 
-            fair_value = sum([x["vwap"]*x['vol'] for x in self.KELP_vwap]) / sum([x['vol'] for x in self.KELP_vwap])
-
             fair_value = mmmid_price
-
 
             if best_ask <= fair_value - KELP_take_width:
                 ask_amount = -1 * order_depth.sell_orders[best_ask]
                 if ask_amount <= 20:
                     quantity = min(ask_amount, position_limit - position)
                     if quantity > 0:
-                        orders.append(Order("KELP", best_ask, quantity))
+                        orders.append(Order("KELP", rounded(best_ask), quantity))
                         buy_order_volume += quantity
+
             if best_bid >= fair_value + KELP_take_width:
                 bid_amount = order_depth.buy_orders[best_bid]
                 if bid_amount <= 20:
                     quantity = min(bid_amount, position_limit + position)
                     if quantity > 0:
-                        orders.append(Order("KELP", best_bid, -1 * quantity))
+                        orders.append(Order("KELP", rounded(best_bid), -1 * quantity))
                         sell_order_volume += quantity
 
             buy_order_volume, sell_order_volume = self.clear_position_order(orders, order_depth, position, position_limit, "KELP", buy_order_volume, sell_order_volume, fair_value, 2)
@@ -164,22 +153,22 @@ class Trader:
 
             aaf = [price for price in order_depth.sell_orders.keys() if price > fair_value + 1]
             bbf = [price for price in order_depth.buy_orders.keys() if price < fair_value - 1]
-            baaf = min(aaf) if len(aaf) > 0 else fair_value + 2
-            bbbf = max(bbf) if len(bbf) > 0 else fair_value - 2
+            baaf = min(aaf) if aaf else fair_value + 2
+            bbbf = max(bbf) if bbf else fair_value - 2
 
             buy_quantity = position_limit - (position + buy_order_volume)
             if buy_quantity > 0:
-                orders.append(Order("KELP", bbbf + 1, buy_quantity))  # Buy order
+                orders.append(Order("KELP", rounded(bbbf + 1), buy_quantity))
 
             sell_quantity = position_limit + (position - sell_order_volume)
             if sell_quantity > 0:
-                orders.append(Order("KELP", baaf - 1, -sell_quantity))  # Sell order
+                orders.append(Order("KELP", rounded(baaf - 1), -sell_quantity))
 
         return orders
-    
+
     def SQUID_orders(self, order_depth: OrderDepth, timespan: int, make_width: float, take_width: float, position: int, position_limit: int) -> List[Order]:
         orders: List[Order] = []
-    
+
         if not order_depth.sell_orders or not order_depth.buy_orders:
             return orders
 
@@ -191,14 +180,13 @@ class Trader:
 
         if position < position_limit:
             buy_qty = position_limit - position
-            orders.append(Order("SQUID_INK", mid_price - offset, buy_qty))
-        
-        if position > -position_limit:
-            sell_qty = position_limit + position 
-            orders.append(Order("SQUID_INK", mid_price + offset, -sell_qty))
-        
-        return orders
+            orders.append(Order("SQUID_INK", rounded(mid_price - offset), buy_qty))
 
+        if position > -position_limit:
+            sell_qty = position_limit + position
+            orders.append(Order("SQUID_INK", rounded(mid_price + offset), -sell_qty))
+
+        return orders
 
     def run(self, state: TradingState):
         result = {}
@@ -212,8 +200,8 @@ class Trader:
         KELP_position_limit = 50
         KELP_timemspan = 10
 
-        squid_make_width = 3.0    #! TODO: adjust
-        squid_take_width = 1.0    #! TODO: adjust
+        squid_make_width = 3.0
+        squid_take_width = 1.0
         squid_position_limit = 50
         squid_timespan = 10
 
@@ -237,8 +225,12 @@ class Trader:
             squid_orders = self.SQUID_orders(state.order_depths["SQUID_INK"], squid_timespan, squid_make_width, squid_take_width, squid_position, squid_position_limit)
             result["SQUID_INK"] = squid_orders
 
-        traderData = jsonpickle.encode( { "KELP_prices": self.KELP_prices, "KELP_vwap": self.KELP_vwap, "SQUID_prices": self.SQUID_prices, "SQUID_vwap": self.SQUID_vwap })
+        traderData = jsonpickle.encode({
+            "KELP_prices": self.KELP_prices,
+            "KELP_vwap": self.KELP_vwap,
+            "SQUID_prices": self.SQUID_prices,
+            "SQUID_vwap": self.SQUID_vwap
+        })
 
         conversions = 1
-
         return result, conversions, traderData
