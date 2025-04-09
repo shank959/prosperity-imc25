@@ -7,27 +7,18 @@ import math
 import statistics
 
 
-def rounded(x):
-    return int(round(x))
 #! TODO: CREATE FUNCTION TO FORECAST VOLATILITY FOR SQUID INK AND KELP AND CALL IN RUN METHOD
 #! FIND PATTERNS IN SQUID INK PRICE OR VOLATILITY USING TIME SERIES ANALYSIS
 class Trader:
     def __init__(self):
         self.KELP_prices = []
         self.KELP_vwap = []
-<<<<<<< HEAD
         self.SQUID_prices = []
         self.SQUID_vwap = []
-=======
         self.SQUID_INK_prices = []
         self.SQUID_INK_volatility_history = []
 
     def garch_forecast(self, returns: List[float], omega: float, alpha: float, beta: float) -> np.ndarray:
-        #! GARCH(1,1) MODEL
-        #! VOLATILITY = OMEGA + ALPHA * (PRICE - VOLATILITY)**2 + BETA * VOLATILITY
-        #! OMEGA = 0.0001
-        #! ALPHA = 0.1
-        #! BETA = 0.8 # gonna self learn these with grid search
 
         variance = np.zeros(len(returns))
         variance[0] = statistics.pvariance(returns)
@@ -78,7 +69,6 @@ class Trader:
         print("Optimal Log-Likelihood:", best_ll)
 
 
->>>>>>> 555b28d (added forecasted volatility with GARCH model and factoring in vol to spread sizes)
 
     def rfr_orders(self, order_depth: OrderDepth, fair_value: int, width: int, position: int, position_limit: int) -> List[Order]:
         orders: List[Order] = []
@@ -98,7 +88,7 @@ class Trader:
                 quantity = min(best_ask_amount, position_limit -
                                position)  # max amt to buy
                 if quantity > 0:
-                    orders.append(Order("RAINFOREST_RESIN", rounded(best_ask), quantity))
+                    orders.append(Order("RAINFOREST_RESIN", round(best_ask), quantity))
                     buy_order_volume += quantity
 
         if len(order_depth.buy_orders) != 0:
@@ -108,7 +98,7 @@ class Trader:
                 # should be the max we can sell
                 quantity = min(best_bid_amount, position_limit + position)
                 if quantity > 0:
-                    orders.append(Order("RAINFOREST_RESIN", rounded(best_bid), -1 * quantity))
+                    orders.append(Order("RAINFOREST_RESIN", round(best_bid), -1 * quantity))
                     sell_order_volume += quantity
 
         buy_order_volume, sell_order_volume = self.clear_position_order(
@@ -116,11 +106,11 @@ class Trader:
 
         buy_quantity = position_limit - (position + buy_order_volume)
         if buy_quantity > 0:
-            orders.append(Order("RAINFOREST_RESIN", rounded(bbbf + 1), buy_quantity))
+            orders.append(Order("RAINFOREST_RESIN", round(bbbf + 1), buy_quantity))
 
         sell_quantity = position_limit + (position - sell_order_volume)
         if sell_quantity > 0:
-            orders.append(Order("RAINFOREST_RESIN", rounded(baaf - 1), -sell_quantity))
+            orders.append(Order("RAINFOREST_RESIN", round(baaf - 1), -sell_quantity))
 
         return orders
 
@@ -140,7 +130,7 @@ class Trader:
                     order_depth.buy_orders[fair_for_ask], position_after_take)
                 #! TODO: SEE IF WE WANT TO OFFLOAD ENTIRE POSITIONS
                 sent_quantity = min(sell_quantity, clear_quantity)
-                orders.append(Order(product, rounded(fair_for_ask), -abs(sent_quantity)))
+                orders.append(Order(product, round(fair_for_ask), -abs(sent_quantity)))
                 sell_order_volume += abs(sent_quantity)
 
         if position_after_take < 0:
@@ -149,7 +139,7 @@ class Trader:
                     abs(order_depth.sell_orders[fair_for_bid]), abs(position_after_take))
                 # clear_quantity = abs(position_after_take)
                 sent_quantity = min(buy_quantity, clear_quantity)
-                orders.append(Order(product, rounded(fair_for_bid), abs(sent_quantity)))
+                orders.append(Order(product, round(fair_for_bid), abs(sent_quantity)))
                 buy_order_volume += abs(sent_quantity)
 
         return buy_order_volume, sell_order_volume
@@ -210,7 +200,7 @@ class Trader:
                 if ask_amount <= 20:    #! WHY 20? WHY NOT 15 LIKE EARLIER? ARE WE TO ASSUME 20 IS OPTIMAL THRESDHOLD FOR POS EV? 
                     quantity = min(ask_amount, position_limit - position)
                     if quantity > 0:
-                        orders.append(Order("KELP", rounded(best_ask), quantity))
+                        orders.append(Order("KELP", round(best_ask), quantity))
                         buy_order_volume += quantity
 
             if best_bid >= fair_value + KELP_take_width:
@@ -218,7 +208,7 @@ class Trader:
                 if bid_amount <= 20:
                     quantity = min(bid_amount, position_limit + position)
                     if quantity > 0:
-                        orders.append(Order("KELP", rounded(best_bid), -1 * quantity))
+                        orders.append(Order("KELP", round(best_bid), -1 * quantity))
                         sell_order_volume += quantity
 
             buy_order_volume, sell_order_volume = self.clear_position_order(
@@ -233,11 +223,11 @@ class Trader:
 
             buy_quantity = position_limit - (position + buy_order_volume)
             if buy_quantity > 0:
-                orders.append(Order("KELP", rounded(bbbf + 1), buy_quantity))
+                orders.append(Order("KELP", round(bbbf + 1), buy_quantity))
 
             sell_quantity = position_limit + (position - sell_order_volume)
             if sell_quantity > 0:
-                orders.append(Order("KELP", rounded(baaf - 1), -sell_quantity))
+                orders.append(Order("KELP", round(baaf - 1), -sell_quantity))
 
         return orders
 
@@ -255,11 +245,11 @@ class Trader:
 
         if position < position_limit:
             buy_qty = position_limit - position
-            orders.append(Order("SQUID_INK", rounded(mid_price - offset), buy_qty))
+            orders.append(Order("SQUID_INK", round(mid_price - offset), buy_qty))
 
         if position > -position_limit:
             sell_qty = position_limit + position
-            orders.append(Order("SQUID_INK", rounded(mid_price + offset), -sell_qty))
+            orders.append(Order("SQUID_INK", round(mid_price + offset), -sell_qty))
 
         return orders
 
