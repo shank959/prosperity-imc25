@@ -15,12 +15,11 @@ class Trader:
     def __init__(self):
         self.KELP_prices = []
         self.KELP_vwap = []
-<<<<<<< HEAD
         self.SQUID_prices = []
         self.SQUID_vwap = []
-=======
         self.SQUID_INK_prices = []
         self.SQUID_INK_volatility_history = []
+        self.squid_ema = None
 
     def garch_forecast(self, returns: List[float], omega: float, alpha: float, beta: float) -> np.ndarray:
         #! GARCH(1,1) MODEL
@@ -49,7 +48,6 @@ class Trader:
             log_likelihood += -0.5 * (np.log(2 * np.pi) + np.log(volatility[t]) + (returns[t]**2 / volatility[t]))
         return log_likelihood
 
-
     def grid_search(self):
         omega = 0.00001
         alpha = 0.1
@@ -76,9 +74,6 @@ class Trader:
 
         print("Optimal Parameters (omega, alpha, beta):", best_params)
         print("Optimal Log-Likelihood:", best_ll)
-
-
->>>>>>> 555b28d (added forecasted volatility with GARCH model and factoring in vol to spread sizes)
 
     def rfr_orders(self, order_depth: OrderDepth, fair_value: int, width: int, position: int, position_limit: int) -> List[Order]:
         orders: List[Order] = []
@@ -246,12 +241,13 @@ class Trader:
 
         if not order_depth.sell_orders or not order_depth.buy_orders:
             return orders
-
+        
+        # Mid Price Strategy
         best_ask = min(order_depth.sell_orders.keys())
         best_bid = max(order_depth.buy_orders.keys())
         mid_price = (best_ask + best_bid) / 2.0
 
-        offset = 1.0  # ! TODO: adjust
+        offset = 2.0  # ! TODO: adjust
 
         if position < position_limit:
             buy_qty = position_limit - position
@@ -260,6 +256,33 @@ class Trader:
         if position > -position_limit:
             sell_qty = position_limit + position
             orders.append(Order("SQUID_INK", rounded(mid_price + offset), -sell_qty))
+
+        return orders
+    
+    
+    def SQUID_orders_ema(self, order_depth: OrderDepth, base_offset: float, position: int, position_limit: int) -> List[Order]:
+        orders: List[Order] = []
+        # Exponential Moving Average (EMA) calc.
+        best_ask = min(order_depth.sell_orders.keys())
+        best_bid = max(order_depth.buy_orders.keys())
+        mid_price = (best_ask + best_bid) / 2.0
+        alpha = 1.0 #!TODO: tune alpha based on shans garch
+
+        if self.squid_ema is None:
+            self.squid_ema = mid_price
+        else:
+            self.squid_ema = alpha * mid_price + (1 - alpha) * self.squid_ema
+
+        fair_value = self.squid_ema
+        offset = base_offset
+
+        # actual MM orders
+        if position < position_limit:
+            buy_qty = position_limit - position
+            orders.append(Order("SQUID_INK", rounded(fair_value - offset), buy_qty))
+        if position > -position_limit:
+            sell_qty = position_limit + position
+            orders.append(Order("SQUID_INK", rounded(fair_value + offset), -sell_qty))
 
         return orders
 
@@ -332,6 +355,7 @@ class Trader:
 
         squid_make_width = 3.0  # ! TODO: adjust
         squid_take_width = 1.0  # ! TODO: adjust
+        squid_base_offset = 2.0 # ! TODO: adjust
         squid_position_limit = 50
         squid_timespan = 10
 
@@ -352,17 +376,25 @@ class Trader:
                 state.order_depths["KELP"], KELP_timemspan, KELP_make_width, KELP_take_width, KELP_position, KELP_position_limit)
             result["KELP"] = KELP_orders
 
+        # Midprice strat
+        """
         if "SQUID_INK" in state.order_depths:
             squid_position = state.position["SQUID_INK"] if "SQUID_INK" in state.position else 0
             squid_orders = self.SQUID_orders(
                 state.order_depths["SQUID_INK"], squid_timespan, squid_make_width, squid_take_width, squid_position, squid_position_limit)
+            result["SQUID_INK"] = squid_orders
+        """
+        if "SQUID_INK" in state.order_depths:
+            squid_position = state.position.get("SQUID_INK", 0)
+            squid_orders = self.SQUID_orders_ema(state.order_depths["SQUID_INK"], squid_base_offset, squid_position, squid_position_limit)
             result["SQUID_INK"] = squid_orders
 
         traderData = jsonpickle.encode({
             "KELP_prices": self.KELP_prices,
             "KELP_vwap": self.KELP_vwap,
             "SQUID_prices": self.SQUID_prices,
-            "SQUID_vwap": self.SQUID_vwap
+            "SQUID_vwap": self.SQUID_vwap,
+            "SQUID_EMA": self.squid_ema
         })
 
         conversions = 1
