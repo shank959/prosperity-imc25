@@ -250,6 +250,10 @@ class Trader:
 
         return squid_ink_df
 
+    # TODO: might want to add more strategies before combining
+
+    # TODO: integrate buy/sell signal logic with SQUID_orders so we can add the orders to the order book
+
     def run(self, state: TradingState):
         result = {}
 
