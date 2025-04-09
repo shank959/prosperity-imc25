@@ -12,6 +12,8 @@ class Trader:
     def __init__(self):
         self.KELP_prices = []
         self.KELP_vwap = []
+        self.SQUID_prices = []
+        self.SQUID_vwap = []
 
     def rfr_orders(self, order_depth: OrderDepth, fair_value: int, width: int, position: int, position_limit: int) -> List[Order]:
         orders: List[Order] = []
@@ -174,6 +176,29 @@ class Trader:
                 orders.append(Order("KELP", baaf - 1, -sell_quantity))  # Sell order
 
         return orders
+    
+    def SQUID_orders(self, order_depth: OrderDepth, timespan: int, make_width: float, take_width: float, position: int, position_limit: int) -> List[Order]:
+        orders: List[Order] = []
+    
+        if not order_depth.sell_orders or not order_depth.buy_orders:
+            return orders
+
+        best_ask = min(order_depth.sell_orders.keys())
+        best_bid = max(order_depth.buy_orders.keys())
+        mid_price = (best_ask + best_bid) / 2.0
+
+        offset = 1.0 #! TODO: adjust
+
+        if position < position_limit:
+            buy_qty = position_limit - position
+            orders.append(Order("SQUID_INK", mid_price - offset, buy_qty))
+        
+        if position > -position_limit:
+            sell_qty = position_limit + position 
+            orders.append(Order("SQUID_INK", mid_price + offset, -sell_qty))
+        
+        return orders
+
 
     def run(self, state: TradingState):
         result = {}
@@ -186,6 +211,11 @@ class Trader:
         KELP_take_width = 1 #! TODO: CHANGE TO WIDTH BEING A FUNCTION OF DIFFERENCE WITH FAIR VALUE AND VOLATILITY
         KELP_position_limit = 50
         KELP_timemspan = 10
+
+        squid_make_width = 3.0    #! TODO: adjust
+        squid_take_width = 1.0    #! TODO: adjust
+        squid_position_limit = 50
+        squid_timespan = 10
 
         # traderData = jsonpickle.decode(state.traderData)
         # print(state.traderData)
@@ -202,9 +232,12 @@ class Trader:
             KELP_orders = self.KELP_orders(state.order_depths["KELP"], KELP_timemspan, KELP_make_width, KELP_take_width, KELP_position, KELP_position_limit)
             result["KELP"] = KELP_orders
 
+        if "SQUID_INK" in state.order_depths:
+            squid_position = state.position["SQUID_INK"] if "SQUID_INK" in state.position else 0
+            squid_orders = self.SQUID_orders(state.order_depths["SQUID_INK"], squid_timespan, squid_make_width, squid_take_width, squid_position, squid_position_limit)
+            result["SQUID_INK"] = squid_orders
 
-        traderData = jsonpickle.encode( { "KELP_prices": self.KELP_prices, "KELP_vwap": self.KELP_vwap })
-
+        traderData = jsonpickle.encode( { "KELP_prices": self.KELP_prices, "KELP_vwap": self.KELP_vwap, "SQUID_prices": self.SQUID_prices, "SQUID_vwap": self.SQUID_vwap })
 
         conversions = 1
 
