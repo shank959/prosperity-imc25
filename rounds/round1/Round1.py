@@ -1,4 +1,4 @@
-from prosperity3bt.datamodel import OrderDepth, UserId, TradingState, Order
+from datamodel import OrderDepth, UserId, TradingState, Order
 from typing import List
 import string
 import jsonpickle
@@ -153,15 +153,15 @@ class Trader:
             return midPrice
         #! TODO: TEST OUT DIFFERENT METHODS OF CALCULATING FAIR VALUE MM VWAP ECT
 
-        elif method == "midpriceFilter":
-            if len([price for price in orderDep.sell_orders.keys() if abs(orderDep.sell_orders[price]) >= min_vol]) == 0 or len([price for price in orderDep.buy_orders.keys() if abs(orderDep.buy_orders[price]) >= min_vol]) == 0:
-                bestAsk = min(orderDep.sell_orders.keys())
-                bestBid = max(orderDep.buy_orders.keys())
-                return (bestAsk + bestBid) / 2
-            else:
-                bestAsk = min([price for price in orderDep.sell_orders.keys() if abs(orderDep.sell_orders[price]) >= min_vol])
-                bestBid = max([price for price in orderDep.buy_orders.keys() if abs(orderDep.buy_orders[price]) >= min_vol])
-                return (bestAsk + bestBid) / 2
+        # elif method == "midpriceFilter":
+        #     if len([price for price in orderDep.sell_orders.keys() if abs(orderDep.sell_orders[price]) >= min_vol]) == 0 or len([price for price in orderDep.buy_orders.keys() if abs(orderDep.buy_orders[price]) >= min_vol]) == 0:
+        #         bestAsk = min(orderDep.sell_orders.keys())
+        #         bestBid = max(orderDep.buy_orders.keys())
+        #         return (bestAsk + bestBid) / 2
+        #     else:
+        #         bestAsk = min([price for price in orderDep.sell_orders.keys() if abs(orderDep.sell_orders[price]) >= min_vol])
+        #         bestBid = max([price for price in orderDep.buy_orders.keys() if abs(orderDep.buy_orders[price]) >= min_vol])
+        #         return (bestAsk + bestBid) / 2
 
     def kelpOrders(self, orderDep: OrderDepth, timespan: int, width: float, kelpWidth: float, position: int, positionLimit: int) -> List[Order]:
         orders: List[Order] = []
@@ -302,6 +302,133 @@ class Trader:
 
     #     return squid_ink_df
 
+    def SQUID_orders(self, order_depth: OrderDepth, timespan: int, take_width: float, position: int, position_limit: int, fair_value_history: List[float]) -> List[Order]:
+        orders: List[Order] = []
+
+        buy_order_volume = 0
+        sell_order_volume = 0
+
+        if len(order_depth.sell_orders) != 0 and len(order_depth.buy_orders) != 0:
+            best_ask = min(order_depth.sell_orders.keys())
+            best_bid = max(order_depth.buy_orders.keys())
+            filtered_ask = [price for price in order_depth.sell_orders.keys() if abs(order_depth.sell_orders[price]) >= 15]
+            filtered_bid = [price for price in order_depth.buy_orders.keys() if abs(order_depth.buy_orders[price]) >= 15]
+            mm_ask = min(filtered_ask) if filtered_ask else best_ask
+            mm_bid = max(filtered_bid) if filtered_bid else best_bid
+
+            mmmid_price = (mm_ask + mm_bid) / 2
+            self.SQUID_prices.append(mmmid_price)
+
+            volume = -1 * order_depth.sell_orders[best_ask] + order_depth.buy_orders[best_bid]
+            vwap = (best_bid * (-1) * order_depth.sell_orders[best_ask] +
+                    best_ask * order_depth.buy_orders[best_bid]) / volume
+            self.SQUID_vwap.append({"vol": volume, "vwap": vwap})
+
+            if len(self.SQUID_vwap) > timespan:
+                self.SQUID_vwap.pop(0)
+
+            if len(self.SQUID_prices) > timespan:
+                self.SQUID_prices.pop(0)
+
+            fair_value = mmmid_price  # You can also use VWAP or rolling mean here
+
+            # moving average of fair value history
+            fair_value_history.append(fair_value)
+            if len(fair_value_history) > timespan:
+                fair_value_history.pop(0)
+            fair_value_mean = sum(fair_value_history) / len(fair_value_history)
+
+            # volatility calculation
+            vol = np.std(fair_value_history)
+
+            # === Z-score calculation ===
+            z = (fair_value - fair_value_mean) / vol if vol > 0 else 0
+            z_threshold = 1.5  # adjustable threshold
+
+            # === Modified trading logic ===
+            if z < -z_threshold and best_ask <= fair_value - take_width:
+                ask_amount = -order_depth.sell_orders[best_ask]
+                if ask_amount <= 20:
+                    quantity = min(ask_amount, position_limit - position)
+                    if quantity > 0:
+                        orders.append(Order("SQUID_INK", round(best_ask), quantity))
+                        buy_order_volume += quantity
+
+            if z > z_threshold and best_bid >= fair_value + take_width:
+                bid_amount = order_depth.buy_orders[best_bid]
+                if bid_amount <= 20:
+                    quantity = min(bid_amount, position_limit + position)
+                    if quantity > 0:
+                        orders.append(Order("SQUID_INK", round(best_bid), -quantity))
+                        sell_order_volume += quantity
+
+            # if best_ask <= fair_value - take_width:
+            #     ask_amount = -1 * order_depth.sell_orders[best_ask]
+            #     if ask_amount <= 20:
+            #         quantity = min(ask_amount, position_limit - position)
+            #         if quantity > 0:
+            #             orders.append(Order("SQUID_INK", round(best_ask), quantity))
+            #             buy_order_volume += quantity
+
+            # if best_bid >= fair_value + take_width:
+            #     bid_amount = order_depth.buy_orders[best_bid]
+            #     if bid_amount <= 20:
+            #         quantity = min(bid_amount, position_limit + position)
+            #         if quantity > 0:
+            #             orders.append(Order("SQUID_INK", round(best_bid), -1 * quantity))
+                        # sell_order_volume += quantity
+
+            buy_order_volume, sell_order_volume = self.clear_position_order(
+                orders, order_depth, position, position_limit, "SQUID_INK", buy_order_volume, sell_order_volume, fair_value, 2
+            )
+
+            # aaf = [price for price in order_depth.sell_orders.keys() if price > fair_value + 1]
+            # bbf = [price for price in order_depth.buy_orders.keys() if price < fair_value - 1]
+            # baaf = min(aaf) if aaf else fair_value + 2
+            # bbbf = max(bbf) if bbf else fair_value - 2
+
+            # === Z-score skewed Market Making ===
+            mid_price = (best_ask + best_bid) / 2
+            z = (mid_price - fair_value) / vol if vol > 0 else 0
+            z_threshold = 1.5  # adjustable threshold
+            skew_distance = 1  # base quote distance
+
+            # Adjust quotes based on z-score
+            if z > z_threshold:
+                # Expect price drop: quote closer ask, farther bid
+                ask_price = round(fair_value + skew_distance)
+                bid_price = round(fair_value - (skew_distance + abs(z)))
+
+            elif z < -z_threshold:
+                # Expect price rise: quote closer bid, farther ask
+                ask_price = round(fair_value + (skew_distance + abs(z)))
+                bid_price = round(fair_value - skew_distance)
+
+            else:
+                # No strong signal: symmetric quotes
+                ask_price = round(fair_value + skew_distance)
+                bid_price = round(fair_value - skew_distance)
+
+            # Calculate quantities to remain within position limits
+            buy_quantity = position_limit - (position + buy_order_volume)
+            sell_quantity = position_limit + (position - sell_order_volume)
+
+            if buy_quantity > 0:
+                orders.append(Order("SQUID_INK", bid_price, buy_quantity))
+
+            if sell_quantity > 0:
+                orders.append(Order("SQUID_INK", ask_price, -sell_quantity))
+
+            # buy_quantity = position_limit - (position + buy_order_volume)
+            # if buy_quantity > 0:
+            #     orders.append(Order("SQUID_INK", round(bbbf + 1), buy_quantity))
+
+            # sell_quantity = position_limit + (position - sell_order_volume)
+            # if sell_quantity > 0:
+            #     orders.append(Order("SQUID_INK", round(baaf - 1), -sell_quantity))
+
+        return orders, fair_value_history
+
     def run(self, state: TradingState):
         result = {}
 
@@ -316,15 +443,26 @@ class Trader:
         KELP_positionition_limit = 50
         KELP_timemspan = 10
 
-        # squid_make_width = 3.0  # ! TODO: adjust
-        # squid_take_width = 1.0  # ! TODO: adjust
-        # squid_positionition_limit = 50
-        # squid_timespan = 10
+        squid_make_width = 3.0  # ! TODO: adjust
+        squid_take_width = 1.0  # ! TODO: adjust
+        squid_positionition_limit = 50
+        squid_timespan = 10
 
         # traderData = jsonpickle.decode(state.traderData)
         # print(state.traderData)
         # self.priceKelp = traderData["priceKelp"]
         # self.vwapKelp = traderData["vwapKelp"]
+
+        trader_object = {}
+        if state.traderData:
+            trader_object = jsonpickle.decode(state.traderData)
+
+        if "initialized" not in trader_object:
+            # First run — seed with historical fair values (replace with your real values)
+            trader_object["squidfair_value_history"] = [1842.5, 1844.5, 1843.5, 1842.5, 1842.0, 1841.5, 1841.0, 1839.0, 1833.0,
+                                                   1833.5, 1832.5, 1831.5, 1831.5, 1832.5, 1830.5, 1831.5, 1833.0, 1834.5, 1838.0, 1839.5
+                                                   ]
+            trader_object["initialized"] = True
 
         if "RAINFOREST_RESIN" in state.order_depths:
             rfr_positionition = state.position["RAINFOREST_RESIN"] if "RAINFOREST_RESIN" in state.position else 0
@@ -338,15 +476,17 @@ class Trader:
                 state.order_depths["KELP"], KELP_timemspan, KELP_make_width, kelpWidth, KELP_positionition, KELP_positionition_limit)
             result["KELP"] = kelpOrders
 
-        # if "SQUID_INK" in state.order_depths:
-        #     squid_positionition = state.position["SQUID_INK"] if "SQUID_INK" in state.position else 0
-        #     squid_orders = self.SQUID_orders(
-        #         state.order_depths["SQUID_INK"], squid_timespan, squid_make_width, squid_take_width, squid_positionition, squid_positionition_limit)
-        #     result["SQUID_INK"] = squid_orders
+        if "SQUID_INK" in state.order_depths:
+            squid_positionition = state.position["SQUID_INK"] if "SQUID_INK" in state.position else 0
+            squid_orders, squid_fair_value_history = self.SQUID_orders(
+                state.order_depths["SQUID_INK"], squid_timespan, squid_make_width, squid_take_width, squid_positionition,
+                squid_positionition_limit, trader_object["squidfair_value_history"])
+            result["SQUID_INK"] = squid_orders
 
         traderData = jsonpickle.encode({
             "priceKelp": self.priceKelp,
             "vwapKelp": self.vwapKelp,
+            "fair_value_history": squid_fair_value_history,
             # "SQUID_prices": self.SQUID_prices,
             # "SQUID_vwap": self.SQUID_vwap
         })
