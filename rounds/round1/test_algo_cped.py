@@ -3,6 +3,7 @@ from typing import List
 import string
 import jsonpickle
 import numpy as np
+import pandas as pd
 import math
 import statistics
 
@@ -17,6 +18,9 @@ class Trader:
         self.SQUID_vwap = []
         self.SQUID_INK_prices = []
         self.SQUID_INK_volatility_history = []
+
+        self.squid_window_size = 20  #! TODO: could change
+        self.squid_mid_history = []
 
     def garch_forecast(self, returns: List[float], omega: float, alpha: float, beta: float) -> np.ndarray:
 
@@ -255,17 +259,86 @@ class Trader:
 
     def squid_ink_fetch_historical_data(self):
         day_price_0_df = pd.read_csv(
-            "../round-1-island-data-bottle/prices_round_1_day_0.csv", delimiter=";")
+            "round-1-island-data-bottle/prices_round_1_day_0.csv", delimiter=";")
         day_price_m1_df = pd.read_csv(
-            "../round-1-island-data-bottle/prices_round_1_day_-1.csv", delimiter=";")
+            "round-1-island-data-bottle/prices_round_1_day_-1.csv", delimiter=";")
         day_price_m2_df = pd.read_csv(
-            "../round-1-island-data-bottle/prices_round_1_day_-2.csv", delimiter=";")
+            "round-1-island-data-bottle/prices_round_1_day_-2.csv", delimiter=";")
 
         merged_df = pd.concat(
             [day_price_0_df, day_price_m1_df, day_price_m2_df])
 
         squid_ink_df = merged_df[merged_df["product"] == "SQUID_INK"].copy()
+        self.squid_hist_df = squid_ink_df # added for efficiency purposes (jus caching it)
         return squid_ink_df
+    
+    def SQUID_orders_zscore(self, order_depth: OrderDepth, position: int, position_limit: int, window_size: int = 20, z_threshold: float = 1.0, volume_scale: float = 10.0) -> List[Order]:
+        orders: List[Order] = []
+        if not order_depth.sell_orders or not order_depth.buy_orders:
+            return orders
+        
+        # Get current best bid and ask with their volumes
+        best_ask = min(order_depth.sell_orders.keys())
+        best_bid = max(order_depth.buy_orders.keys())
+        best_ask_vol = -order_depth.sell_orders[best_ask]  # Convert to positive volume
+        best_bid_vol = order_depth.buy_orders[best_bid]
+        
+        # Initialize history if not exists
+        if not hasattr(self, 'squid_history'):
+            self.squid_history = []
+            self.rolling_mean = 1971.14  # Initial mean from historical data
+            self.rolling_std = 67.90     # Initial std from historical data
+        
+        # Store current data
+        current_data = {
+            'bid': best_bid,
+            'ask': best_ask,
+            'bid_vol': best_bid_vol,
+            'ask_vol': best_ask_vol,
+            'mid': (best_bid + best_ask) / 2
+        }
+        
+        # Update history
+        self.squid_history.append(current_data)
+        if len(self.squid_history) > window_size:
+            self.squid_history.pop(0)
+        
+        # Calculate rolling statistics
+        if len(self.squid_history) >= window_size:
+            # Calculate new rolling mean and std
+            mid_prices = [data['mid'] for data in self.squid_history]
+            self.rolling_mean = statistics.mean(mid_prices)
+            self.rolling_std = statistics.stdev(mid_prices) if len(mid_prices) > 1 else self.rolling_std
+            
+            # Calculate z-scores for current prices
+            current_mid = (best_bid + best_ask) / 2
+            z_score = (current_mid - self.rolling_mean) / self.rolling_std if self.rolling_std != 0 else 0
+            
+            # Calculate volume statistics
+            bid_volumes = [data['bid_vol'] for data in self.squid_history]
+            ask_volumes = [data['ask_vol'] for data in self.squid_history]
+            avg_bid_vol = statistics.mean(bid_volumes)
+            avg_ask_vol = statistics.mean(ask_volumes)
+            
+            # Mean reversion trading logic
+            if z_score > z_threshold and best_bid_vol > avg_bid_vol:
+                # High price with high volume - good opportunity to sell
+                deviation = z_score - z_threshold
+                vol = volume_scale * deviation * (best_bid_vol / avg_bid_vol)
+                sell_qty = int(min(position_limit + position, vol))
+                if sell_qty > 0:
+                    orders.append(Order("SQUID_INK", round(best_bid), -sell_qty))
+            
+            elif z_score < -z_threshold and best_ask_vol > avg_ask_vol:
+                # Low price with high volume - good opportunity to buy
+                deviation = abs(z_score + z_threshold)
+                vol = volume_scale * deviation * (best_ask_vol / avg_ask_vol)
+                buy_qty = int(min(position_limit - position, vol))
+                if buy_qty > 0:
+                    orders.append(Order("SQUID_INK", round(best_ask), buy_qty))
+        
+        return orders
+
 
     def squid_ink_mean_reversion(self):
         # We want to combine this strategy with others to do directional trading at specific points
@@ -324,6 +397,8 @@ class Trader:
         squid_take_width = 1.0  # ! TODO: adjust
         squid_position_limit = 50
         squid_timespan = 10
+        
+        #self.squid_ink_fetch_historical_data() # for the caching of the data
 
         # traderData = jsonpickle.decode(state.traderData)
         # print(state.traderData)
@@ -342,10 +417,29 @@ class Trader:
                 state.order_depths["KELP"], KELP_timemspan, KELP_make_width, KELP_take_width, KELP_position, KELP_position_limit)
             result["KELP"] = KELP_orders
 
+        """
         if "SQUID_INK" in state.order_depths:
             squid_position = state.position["SQUID_INK"] if "SQUID_INK" in state.position else 0
             squid_orders = self.SQUID_orders(
                 state.order_depths["SQUID_INK"], squid_timespan, squid_make_width, squid_take_width, squid_position, squid_position_limit)
+            result["SQUID_INK"] = squid_orders
+        
+        if "SQUID_INK" in state.order_depths:
+            squid_position = state.position.get("SQUID_INK", 0)
+            squid_orders = self.SQUID_orders_zscore(state.order_depths["SQUID_INK"], squid_position, 50)
+            result["SQUID_INK"] = squid_orders
+        """
+
+        if "SQUID_INK" in state.order_depths:
+            squid_position = state.position.get("SQUID_INK", 0)
+            squid_orders = self.SQUID_orders_zscore(
+                order_depth = state.order_depths["SQUID_INK"], 
+                position = squid_position, 
+                position_limit = 50, 
+                window_size = 20,
+                z_threshold = 1.5,
+                volume_scale = 10.0
+            )
             result["SQUID_INK"] = squid_orders
 
         traderData = jsonpickle.encode({
