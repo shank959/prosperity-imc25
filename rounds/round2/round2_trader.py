@@ -12,12 +12,55 @@ PARAMETERS = {
     },
     "KELP": {
         "market_makers_size": 15,
+        "position_limit": 50,
     },
-    "SQUID_INK":{
+    "SQUID_INK": {
+        "market_makers_size": 15,
+        "position_limit": 50,
     }
 }
 
+
 class Trader:
+    # INVENTORY MANAGEMENT
+    def clearPos(self,
+                 orders: List[Order],
+                 orderDep: OrderDepth,
+                 position: int,
+                 positionLimit: int,
+                 product: str,
+                 buyVolume: int,
+                 sellVolume: int,
+                 fairVal: float) -> List[Order]:
+        positionAfter = position + buyVolume - sellVolume
+        fairBid = math.floor(fairVal)
+        fairAsk = math.ceil(fairVal)
+        #! TODO: TRY OUT DIFFERENT METHODS OF OFLLOADING position
+        # fairAsk = fairBid = fair
+
+        buyQuant = positionLimit - (position + buyVolume)
+        sellQuant = positionLimit + (position - sellVolume)
+
+        if positionAfter > 0:
+            if fairAsk in orderDep.buy_orders.keys():
+                clearQuant = min(
+                    orderDep.buy_orders[fairAsk], positionAfter)
+                #! TODO: SEE IF WE WANT TO OFFLOAD ENTIRE POSITIONS
+                sentQuant = min(sellQuant, clearQuant)
+                orders.append(Order(product, round(fairAsk), -abs(sentQuant)))
+                sellVolume += abs(sentQuant)
+
+        if positionAfter < 0:
+            if fairBid in orderDep.sell_orders.keys():
+                clearQuant = min(
+                    abs(orderDep.sell_orders[fairBid]), abs(positionAfter))
+                # clearQuant = abs(positionAfter)
+                sentQuant = min(buyQuant, clearQuant)
+                orders.append(Order(product, round(fairBid), abs(sentQuant)))
+                buyVolume += abs(sentQuant)
+
+        return buyVolume, sellVolume
+
     # RAINFROEST_RESIN
     def rfr_order(self, order_depth: OrderDepth, position: int) -> List[Order]:
         fv = PARAMETERS["RAINFOREST_RESIN"]["fair_value"]
@@ -26,7 +69,7 @@ class Trader:
         orders = []
         buy_quantity = 0
         sell_quantity = 0
-        
+
         # market taking
         # lifting bids higher than fair value
         if len(order_depth.buy_orders) != 0:
@@ -34,7 +77,7 @@ class Trader:
                 price for price in order_depth.buy_orders.keys() 
                 if price >= fv
             ], reverse=True)
-        
+
         if len(acceptable_bids) > 0:
             # we want to lift all acceptable bids
             for price in acceptable_bids:
@@ -49,10 +92,10 @@ class Trader:
         # lifting asks lower than fair value
         if len(order_depth.sell_orders) != 0:
             acceptable_asks = sorted([
-                price for price in order_depth.sell_orders.keys() 
+                price for price in order_depth.sell_orders.keys()
                 if price <= fv
             ])
-        
+
         if len(acceptable_asks) > 0:
             # we want to lift all acceptable asks
             for price in acceptable_asks:
@@ -64,25 +107,37 @@ class Trader:
                 if position + buy_quantity - pos_lim >= 0:
                     break
 
-        
+        buyVolume, sellVolume = self.clearPos(
+            orders, order_depth, position, pos_lim, "RAINFOREST_RESIN", buy_quantity, sell_quantity, fv
+        )
+        ###
+        '''
+        I CHANGED THIS TO fv +- 1 but maybe we should be market making at many different levels
+        '''
+        ###
 
-        
+        buyQuant = pos_lim - (position + buyVolume)
+        if buyQuant > 0:
+            orders.append(Order("RAINFOREST_RESIN", round(fv + 1), buyQuant))
 
-        
-    #KELP
+        sellQuant = pos_lim + (position - sellVolume)
+        if sellQuant > 0:
+            orders.append(Order("RAINFOREST_RESIN", round(fv - 1), -sellQuant))
+
+    # KELP
     def kelp_fair_value(self, order_depth: OrderDepth):
         # first filter out the orders which have a high volume
         filtered_ask = [
             price
-            for price in order_depth.sell_orders.keys() 
-            if order_depth.sell_orders[price] >= \
-                PARAMETERS["KELP"]["market_makers_size"] 
+            for price in order_depth.sell_orders.keys()
+            if order_depth.sell_orders[price] >=
+            PARAMETERS["KELP"]["market_makers_size"]
         ]
         filtered_bid = [
             price
-            for price in order_depth.buy_orders.keys() 
-            if order_depth.buy_orders[price] >= \
-                PARAMETERS["KELP"]["market_makers_size"] 
+            for price in order_depth.buy_orders.keys()
+            if order_depth.buy_orders[price] >=
+            PARAMETERS["KELP"]["market_makers_size"]
         ]
         # calculated estimated fair value
         if len(filtered_ask) > 0 and len(filtered_bid) > 0:
@@ -94,46 +149,63 @@ class Trader:
             fair_value = min(order_depth.sell_orders.keys()) \
                 + max(order_depth.buy_orders.keys()) / 2
         return fair_value
-    
-    def kelp_order():
+
+    def kelp_order(self,
+                   order_depth: OrderDepth,
+                   position: int,
+                   fair_value: float) -> List[Order]:
+        orders = []
+        pos_lim = PARAMETERS["KELP"]["position_limit"]
+
+        buy_quantity = 0
+        sell_quantity = 0
+
+        ###
+        """
+        COMPLETE THIS
+        """
+        ###
+
         pass
 
     # SQUID_INK
     def squid_order():
         pass
 
-    def run(self, state : TradingState):
+    def run(self, state: TradingState):
         traderObject = {}
-        if state.traderData != None and state.traderData != "":
+        if state.traderData is not None and state.traderData != "":
             traderObject = jsonpickle.decode(state.traderData)
-        
+
         result = {}
         conversions = 0
 
         # rainforest resin
         if "RAINFOREST_RESIN" in state.order_depths:
-            # market take
-
-            # clear
-
-            # make
+            rfr_pos = state.position["RAINFOREST_RESIN"] if "RAINFOREST_RESIN" in state.position else 0
+            rfr_orders = self.rfr_orders(
+                state.order_depths["RAINFOREST_RESIN"], rfr_pos
+            )
+            result["RAINFOREST_RESIN"] = rfr_orders
 
         # kelp
         if "KELP" in state.order_depths:
             kelp_fair_value = self.kelp_fair_value(state.order_depths["KELP"])
-            # market take
-
-            # clear
-
-            # make
+            kelp_order = self.kelp_order(
+                state.order_depths["KELP"], state.position["KELP"], kelp_fair_value
+            )
+            result["KELP"] = kelp_order
 
         # squid ink
         if "SQUID_INK" in state.order_depths:
-            # market take
-
-            # clear
-
-            # make
+            squid_ink_order = self.squid_order(
+                ###
+                """
+                COMPLETE THIS
+                """
+                ###
+            )
+            result["SQUID_INK"] = squid_ink_order
 
         # basket arb strat (no market making?)
 
