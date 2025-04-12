@@ -22,6 +22,43 @@ PARAMETERS = {
 
 
 class Trader:
+
+    def __init__(self):
+        self.RFR = {
+            "position_limit": 50,
+            "fair_value": 10000,
+        }
+        self.KELP = {
+            "position_limit": 50,
+            "market_makers_size": 15,
+            "mPrice": []
+        }
+        self.SQUID = {
+            "position_limit": 50,
+            "market_makers_size": 15,
+            "mPrice": []
+        }
+        self.PIC1 = {
+            "position_limit": 60,
+            "mPrice": []
+        }
+        self.PIC2 = {
+            "position_limit": 100,
+            "mPrice": []
+        }
+        self.CROSSOINT = {
+            "position_limit": 250,
+            "mPrice": []
+        }
+        self.JAM = {
+            "position_limit": 350,
+            "mPrice": []
+        }
+        self.DJEMBE = {
+            "position_limit": 60,
+            "mPrice": []
+        }
+
     # INVENTORY MANAGEMENT
     def clearPos(self,
                  orders: List[Order],
@@ -63,8 +100,8 @@ class Trader:
 
     # RAINFROEST_RESIN
     def rfr_order(self, order_depth: OrderDepth, position: int) -> List[Order]:
-        fv = PARAMETERS["RAINFOREST_RESIN"]["fair_value"]
-        pos_lim = PARAMETERS["RAINFOREST_RESIN"]["position_limit"]
+        fv = self.RFR["fair_value"]
+        pos_lim = self.RFR["position_limit"]
 
         orders = []
         buy_quantity = 0
@@ -131,13 +168,13 @@ class Trader:
             price
             for price in order_depth.sell_orders.keys()
             if order_depth.sell_orders[price] >=
-            PARAMETERS["KELP"]["market_makers_size"]
+            self.KELP["market_makers_size"]
         ]
         filtered_bid = [
             price
             for price in order_depth.buy_orders.keys()
             if order_depth.buy_orders[price] >=
-            PARAMETERS["KELP"]["market_makers_size"]
+            self.KELP["market_makers_size"]
         ]
         # calculated estimated fair value
         if len(filtered_ask) > 0 and len(filtered_bid) > 0:
@@ -155,7 +192,7 @@ class Trader:
                    position: int,
                    fair_value: float) -> List[Order]:
         orders = []
-        pos_lim = PARAMETERS["KELP"]["position_limit"]
+        pos_lim = self.KELP["position_limit"]
 
         buy_quantity = 0
         sell_quantity = 0
@@ -171,6 +208,8 @@ class Trader:
     # SQUID_INK
     def squid_order():
         pass
+
+    
 
     def run(self, state: TradingState):
         traderObject = {}
