@@ -454,8 +454,6 @@ class Trader:
 
     def pic1_order(self, order_depth: OrderDepth, position: int, position_limit: int):
         # pic1 and underlying
-
-
         pass
 
     def create_synthetic_basket_order_depth(self, order_depths, basket_weights):
@@ -568,7 +566,57 @@ class Trader:
         
 
     def cross_pic_order(self, order_depth: OrderDepth, position: int, position_limit: int):
+        orders = []
         # pic1 and pic2
+        pic1_order_depth = order_depth["PICNIC_BASKET1"]
+        pic2_order_depth = order_depth["PICNIC_BASKET2"]
+        djembes_order_depth = order_depth["DJEMBES"]
+
+        pic1_ba = min(pic1_order_depth.sell_orders.keys())
+        pic2_ba = min(pic2_order_depth.sell_orders.keys())
+        djembe_ba = min(djembes_order_depth.sell_orders.keys())
+
+        pic1_bb = max(pic1_order_depth.buy_orders.keys())
+        pic2_bb = max(pic2_order_depth.buy_orders.keys())
+        djembe_bb = max(djembes_order_depth.buy_orders.keys())
+
+        # caclulate synthetic prices of 2 djembe which is 2 pic1 - 3 pic2
+        synth_djembe_ba = (2 * pic1_ba - 3 * pic2_bb)/2
+        synth_djembe_bb = (2 * pic1_bb - 3 * pic2_ba)/2
+        
+        # Case 1
+        # if synthetic bid is higher than djembe ask, buy djembe and sell synthetic
+        if djembe_ba < synth_djembe_bb:
+            available_djembe = abs(djembes_order_depth.sell_orders[djembe_ba])//2
+            available_synth = min(abs(pic1_order_depth.buy_orders[pic1_bb])//2, abs(pic2_order_depth.sell_orders[pic2_ba])//3)
+            djembe_amount = 2 * min(available_djembe, available_synth)
+            if djembe_amount <= 20:
+                ### TODO: check if this is correct
+                djembe_quantity = min(djembe_amount, djembe_pos_lim - djembe_pos, pic2_pos_lim - pic2_pos, (2/3) * (pic1_pos_lim - pic1_pos))
+                pic1_quantity = 3/2 * djembe_quantity
+                pic2_quantity = 1 * djembe_quantity
+                if djembe_quantity > 0:
+                    orders.append(Order("DJEMBES", round(djembe_ba), quantity))
+                    orders.append(Order("PICNIC_BASKET1", round(pic1_bb), -1 * pic1_quantity))
+                    orders.append(Order("PICNIC_BASKET2", round(pic2_ba), pic2_quantity))
+                    buyVolume += quantity
+
+        # Case 2
+        # if synthetic ask is lower than djembe bid, sell djembe and buy synthetic
+        if djembe_bb > synth_djembe_ba:
+            available_djembe = abs(djembes_order_depth.buy_orders[djembe_bb])//2
+            available_synth = min(abs(pic1_order_depth.sell_orders[pic1_ba])//2, abs(pic2_order_depth.buy_orders[pic2_bb])//3)
+            djembe_amount = 2 * min(available_djembe, available_synth)
+            if djembe_amount <= 20:
+                ### TODO: check if this is correct
+                djembe_quantity = min(djembe_amount, djembe_pos_lim + djembe_pos, pic2_pos_lim + pic2_pos, (2/3) * (pic1_pos_lim + pic1_pos))
+                pic1_quantity = 3/2 * djembe_quantity
+                pic2_quantity = 1 * djembe_quantity
+                if djembe_quantity > 0:
+                    orders.append(Order("DJEMBES", round(djembe_bb), -1 * quantity))
+                    orders.append(Order("PICNIC_BASKET1", round(pic1_ba), pic1_quantity))
+                    orders.append(Order("PICNIC_BASKET2", round(pic2_bb), -1 * pic2_quantity))
+                    sellVolume += quantity
         pass
 
     def run(self, state: TradingState):
