@@ -691,12 +691,10 @@ class Trader:
                 self.CROISSANTS["position_limit"],
                 self.JAMS["position_limit"]
             )
-            
+
             result["PICNIC_BASKET2"] = pic2_orders
             result["CROISSANTS"] = croissants_orders 
             result["JAMS"] = jams_orders
-            
-
 
         traderData = jsonpickle.encode({
             "priceKelp": self.KELP["mPrice"],
