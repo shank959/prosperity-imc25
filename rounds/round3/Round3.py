@@ -138,7 +138,6 @@ class Trader:
             orders.append(Order("RAINFOREST_RESIN", round(baaf - 1), -sellQuant))
 
         return orders
-    
 
     def clearPos(self, orders: List[Order], orderDep: OrderDepth, position: int, positionLimit: int, product: str, buyVolume: int, sellVolume: int, fairVal: float, width: int) -> List[Order]:
         positionAfter = position + buyVolume - sellVolume
@@ -698,14 +697,14 @@ class Trader:
 
                     # sell delta units of the underlying
                     delta = deltas[i]
-                    
+
                 elif sell_signals[i]:
                     # sell the option
 
                     # buy delta units of the underlying
                     best_ask = min(order_depth.sell_orders.keys())
                     delta = deltas[i]
-                
+
         return orders
 
 
