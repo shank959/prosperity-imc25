@@ -1,5 +1,5 @@
 from datamodel import OrderDepth, UserId, TradingState, Order
-from typing import List
+from typing import List, Dict
 import string
 import jsonpickle
 import numpy as np
@@ -55,6 +55,12 @@ class Trader:
         self.DJEMBES = {
             "position_limit": 60,
             "mPrice": []
+        }
+        self.VOLCANIC_ROCK = {
+            "position_limit": 400
+        }
+        self.VOLCANIC_ROCK_VOUCHER = {
+            "position_limit": 200
         }
 
     def get_mm_price(self, order_depth: OrderDepth, product: str) -> float:
@@ -563,7 +569,6 @@ class Trader:
                             orders.append(Order(comp, best_ask, exec_vol * weight))
         return orders
 
-        
 
     def cross_pic_order(self, order_depth: OrderDepth, position: int, position_limit: int):
         orders = []
@@ -644,69 +649,97 @@ class Trader:
         TTE = (5 * 1e6 - timestamp)/(1e6 * 365) # we are in round 3 so 5 days (5 * 1e6) left in the round
 
         # Define function to compute Black-Scholes implied volatility using Newton-Raphson
-        def black_scholes_implied_vol(St, Vt, K, TTE, option_type="call", tol=1e-6, max_iter=100):
+        def black_scholes_implied_vol(St, Vt, K, TTE, option_type="call", tol=1e-6, max_iter=10):
             # Initial guess for volatility
             sigma = 0.2
             for i in range(max_iter):
                 d1 = (math.log(St/K) + 0.5 * sigma**2 * TTE) / (sigma * math.sqrt(TTE))
+                # print(d1)
                 d2 = d1 - sigma * math.sqrt(TTE)
                 delta = N.cdf(d1)
                 price = St * delta - K * N.cdf(d2)
                 vega = St * N.pdf(d1) * math.sqrt(TTE)
                 diff = price - Vt
-                if abs(diff) < tol:
-                    return sigma
-                sigma -= diff / vega
                 if vega < 1e-8:
                     break
-            return sigma  # return last computed sigma if not converged
+                if abs(diff) < tol:
+                    return sigma, delta
+                sigma -= diff / vega
+            if delta == 0:
+                delta = 0.01
+            return sigma, delta  # return last computed sigma if not converged
 
         # Compute implied volatility v_t
-        v_t = black_scholes_implied_vol(St, Vt, K, TTE)
+        v_t, delta = black_scholes_implied_vol(St, Vt, K, TTE)
         m_t = log(K/St)/sqrt(TTE)
 
         # For debugging / verification purposes
-        print("Computed m_t:", m_t)
-        print("Computed implied volatility (v_t):", v_t)
+        # print("Computed m_t:", m_t)
+        # print("Computed implied volatility (v_t):", v_t)
 
         return v_t, m_t, delta
 
-    def volcanic_rock_coupon_order(self, order_depth: OrderDepth, position: int, position_limit: int):
+    def volcanic_rock_voucher_order(self, order_depth: OrderDepth, position: Dict[str, int], lim: int, v_lim: int):
+        orders = []
         volcanic_rock_order_depth = order_depth["VOLCANIC_ROCK"]
-        voucher_order
-        strikes = [9500, 9750, 10000, 10250, 10500]
+        voucher_order_depths = {
+            f"VOLCANIC_ROCK_VOUCHER_{K}": order_depth[f"VOLCANIC_ROCK_VOUCHER_{K}"] for K in range(9500, 10501, 250)
+        }
+        strikes = [K for K in range(9500, 10501, 250)]
         iv_s, m_s, deltas = [], [], []
 
         for K in strikes:
-            v_t, m_t = self.volcanic_rock_iv(K=K, timestamp=0, order_depth=order_depth)
+            v_t, m_t, delta = self.volcanic_rock_iv(K=K, timestamp=0, order_depth=order_depth)
             iv_s.append(v_t)
             m_s.append(m_t)
+            deltas.append(delta)
 
-            coeffs = np.polyfit(m_s, iv_s, 2)
+        coeffs = np.polyfit(m_s, iv_s, 2)
 
-            threshold = 0.5 # arbitrary place holder
+        threshold = 0.02 # arbitrary place holder
 
-            buy_signals = [iv > coeffs[0] * mt**2 + coeffs[1] * mt + coeffs[2] + threshold for mt, iv in zip(iv_s, m_s)]
+        sell_signals = [iv > coeffs[0] * mt**2 + coeffs[1] * mt + coeffs[2] + threshold for mt, iv in zip(iv_s, m_s)]
+        #TODO double check
 
-            sell_signals = [iv < coeffs[0] * mt**2 + coeffs[1] * mt + coeffs[2] - threshold for mt, iv in zip(iv_s, m_s)]
+        buy_signals = [iv < coeffs[0] * mt**2 + coeffs[1] * mt + coeffs[2] - threshold for mt, iv in zip(iv_s, m_s)]
 
-            # place orders for each
-            for i, K in enumerate(strikes):
-                if buy_signals[i]:
-                    # buy the option, but how much to buy? as much as we can? as much as out position allows
+        for i, K in enumerate(strikes):
+            if buy_signals[i] and order_depth[f'VOLCANIC_ROCK_VOUCHER_{K}'].sell_orders and order_depth['VOLCANIC_ROCK'].buy_orders:
+                # sell delta units of the underlying
+                best_bid = max(order_depth['VOLCANIC_ROCK'].buy_orders.keys()) if order_depth['VOLCANIC_ROCK'].buy_orders else 0
+                pos_sell_amt = abs(order_depth['VOLCANIC_ROCK'].buy_orders[best_bid])
+                pos_sell_amt = min(pos_sell_amt, position["VOLCANIC_ROCK"] + lim)
 
-                    # sell delta units of the underlying
-                    delta = deltas[i]
+                # buy the option
+                delta = deltas[i]
+                best_ask = min(order_depth[f'VOLCANIC_ROCK_VOUCHER_{K}'].sell_orders.keys()) if order_depth[f'VOLCANIC_ROCK_VOUCHER_{K}'].sell_orders else 0
+                pos_buy_amt = abs(order_depth[f'VOLCANIC_ROCK_VOUCHER_{K}'].sell_orders[best_ask])
+                pos_buy_amt = min(pos_sell_amt // delta, pos_buy_amt)
+                pos_buy_amt = min(pos_buy_amt, v_lim - position[f'VOLCANIC_ROCK_VOUCHER_{K}'])
 
-                elif sell_signals[i]:
-                    # sell the option
+                if pos_buy_amt > 0:
+                    orders.append(Order(f'VOLCANIC_ROCK_VOUCHER_{K}', best_ask, round(pos_buy_amt)))
+                    orders.append(Order('VOLCANIC_ROCK', best_bid, round(-pos_buy_amt * delta)))
 
-                    # buy delta units of the underlying
-                    best_ask = min(order_depth.sell_orders.keys())
-                    delta = deltas[i]
+            elif sell_signals[i] and order_depth[f'VOLCANIC_ROCK_VOUCHER_{K}'].buy_orders and order_depth['VOLCANIC_ROCK'].sell_orders:
+                # buy delta units of the underlying
+                best_ask = min(order_depth['VOLCANIC_ROCK'].sell_orders.keys()) if order_depth['VOLCANIC_ROCK'].sell_orders else 0
+                pos_buy_amt = abs(order_depth['VOLCANIC_ROCK'].sell_orders[best_ask])
+                pos_buy_amt = min(pos_buy_amt, lim - position["VOLCANIC_ROCK"])
 
+                # sell the option
+                delta = deltas[i]
+                best_bid = max(order_depth[f'VOLCANIC_ROCK_VOUCHER_{K}'].buy_orders.keys()) if order_depth[f'VOLCANIC_ROCK_VOUCHER_{K}'].buy_orders else 0
+                pos_sell_amt = abs(order_depth[f'VOLCANIC_ROCK_VOUCHER_{K}'].buy_orders[best_bid])
+                pos_sell_amt = min(pos_buy_amt // delta, pos_sell_amt)
+                pos_sell_amt = min(pos_sell_amt, v_lim + position[f'VOLCANIC_ROCK_VOUCHER_{K}'])
+
+                if pos_sell_amt > 0:
+                    orders.append(Order(f'VOLCANIC_ROCK_VOUCHER_{K}', best_bid, round(-pos_sell_amt)))
+                    orders.append(Order('VOLCANIC_ROCK', best_ask, round(pos_sell_amt * delta)))
+        if orders != []:
+            print("Orders:", orders)
         return orders
-
 
 
     def run(self, state: TradingState):
@@ -737,59 +770,77 @@ class Trader:
         if state.traderData:
             trader_object = jsonpickle.decode(state.traderData)
 
-        if "initialized" not in trader_object:
-            # First run — seed with historical fair values (replace with your real values)
-            trader_object["squidfair_value_history"] = [1842.5, 1844.5, 1843.5, 1842.5, 1842.0, 1841.5, 1841.0, 1839.0, 1833.0,
-                                                   1833.5, 1832.5, 1831.5, 1831.5, 1832.5, 1830.5, 1831.5, 1833.0, 1834.5, 1838.0, 1839.5
-                                                   ]
-            trader_object["initialized"] = True
+        # if "initialized" not in trader_object:
+        #     # First run — seed with historical fair values (replace with your real values)
+        #     trader_object["squidfair_value_history"] = [1842.5, 1844.5, 1843.5, 1842.5, 1842.0, 1841.5, 1841.0, 1839.0, 1833.0,
+        #                                            1833.5, 1832.5, 1831.5, 1831.5, 1832.5, 1830.5, 1831.5, 1833.0, 1834.5, 1838.0, 1839.5
+        #                                            ]
+        #     trader_object["initialized"] = True
 
-        if "RAINFOREST_RESIN" in state.order_depths:
-            rfr_position = state.position["RAINFOREST_RESIN"] if "RAINFOREST_RESIN" in state.position else 0
-            rfr_orders = self.rfr_orders(
-                state.order_depths["RAINFOREST_RESIN"], rfr_fair_value, rfr_width, rfr_position, rfr_position_limit)
-            result["RAINFOREST_RESIN"] = rfr_orders
+        # if "RAINFOREST_RESIN" in state.order_depths:
+        #     rfr_position = state.position["RAINFOREST_RESIN"] if "RAINFOREST_RESIN" in state.position else 0
+        #     rfr_orders = self.rfr_orders(
+        #         state.order_depths["RAINFOREST_RESIN"], rfr_fair_value, rfr_width, rfr_position, rfr_position_limit)
+        #     result["RAINFOREST_RESIN"] = rfr_orders
 
-        if "KELP" in state.order_depths:
-            KELP_position = state.position["KELP"] if "KELP" in state.position else 0
-            kelpOrders = self.kelpOrders(
-                state.order_depths["KELP"], KELP_timemspan, KELP_make_width, kelpWidth, KELP_position, KELP_position_limit)
-            result["KELP"] = kelpOrders
+        # if "KELP" in state.order_depths:
+        #     KELP_position = state.position["KELP"] if "KELP" in state.position else 0
+        #     kelpOrders = self.kelpOrders(
+        #         state.order_depths["KELP"], KELP_timemspan, KELP_make_width, kelpWidth, KELP_position, KELP_position_limit)
+        #     result["KELP"] = kelpOrders
 
-        if "SQUID_INK" in state.order_depths:
-            squid_position = state.position["SQUID_INK"] if "SQUID_INK" in state.position else 0
-            squid_orders, squid_fair_value_history = self.SQUID_orders(
-                state.order_depths["SQUID_INK"],
-                squid_timespan,
-                squid_take_width,          
-                squid_position,   
-                squid_position_limit,
-                trader_object["squidfair_value_history"]
-            )
+        # if "SQUID_INK" in state.order_depths:
+        #     squid_position = state.position["SQUID_INK"] if "SQUID_INK" in state.position else 0
+        #     squid_orders, squid_fair_value_history = self.SQUID_orders(
+        #         state.order_depths["SQUID_INK"],
+        #         squid_timespan,
+        #         squid_take_width,          
+        #         squid_position,   
+        #         squid_position_limit,
+        #         trader_object["squidfair_value_history"]
+        #     )
         
-        if "PICNIC_BASKET2" in state.order_depths:
-            pic2_position = state.position["PICNIC_BASKET2"] if "PICNIC_BASKET2" in state.position else 0
-            croissants_position = state.position["CROISSANTS"] if "CROISSANTS" in state.position else 0
-            jams_position = state.position["JAMS"] if "JAMS" in state.position else 0
+        # if "PICNIC_BASKET2" in state.order_depths:
+        #     pic2_position = state.position["PICNIC_BASKET2"] if "PICNIC_BASKET2" in state.position else 0
+        #     croissants_position = state.position["CROISSANTS"] if "CROISSANTS" in state.position else 0
+        #     jams_position = state.position["JAMS"] if "JAMS" in state.position else 0
             
-            pic2_orders, croissants_orders, jams_orders = self.pic2_spread_order(
-                state.order_depths,
-                pic2_position,
-                croissants_position,
-                jams_position,
-                self.PIC2["position_limit"],
-                self.CROISSANTS["position_limit"],
-                self.JAMS["position_limit"]
-            )
+        #     pic2_orders, croissants_orders, jams_orders = self.pic2_spread_order(
+        #         state.order_depths,
+        #         pic2_position,
+        #         croissants_position,
+        #         jams_position,
+        #         self.PIC2["position_limit"],
+        #         self.CROISSANTS["position_limit"],
+        #         self.JAMS["position_limit"]
+        #     )
 
-            result["PICNIC_BASKET2"] = pic2_orders
-            result["CROISSANTS"] = croissants_orders 
-            result["JAMS"] = jams_orders
+        #     result["PICNIC_BASKET2"] = pic2_orders
+        #     result["CROISSANTS"] = croissants_orders 
+        #     result["JAMS"] = jams_orders
+
+        if "VOLCANIC_ROCK" in state.order_depths:
+            strikes = [K for K in range(9500, 10501, 250)]
+            volcanic_rock_positions = {
+                "VOLCANIC_ROCK": state.position["VOLCANIC_ROCK"] if "VOLCANIC_ROCK" in state.position else 0
+            }
+
+            for K in strikes:
+                key = f"VOLCANIC_ROCK_VOUCHER_{K}"
+                volcanic_rock_positions[key] = state.position[key] if key in state.position else 0
+
+            volcanic_rock_orders = self.volcanic_rock_voucher_order(
+                state.order_depths,
+                volcanic_rock_positions,
+                self.VOLCANIC_ROCK["position_limit"],
+                self.VOLCANIC_ROCK_VOUCHER["position_limit"]
+            )
+            result["VOLCANIC_ROCK"] = volcanic_rock_orders
 
         traderData = jsonpickle.encode({
             "priceKelp": self.KELP["mPrice"],
             "vwapKelp": self.KELP["vwap"],
-            "fair_value_history": squid_fair_value_history,
+            # "fair_value_history": squid_fair_value_history,
             # "SQUID_prices": self.SQUID["mPrice"],
             # "SQUID_vwap": self.SQUID["vwap"]
         })
