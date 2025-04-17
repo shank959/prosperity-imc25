@@ -6,3 +6,5 @@ import numpy as np
 import math
 from math import log, sqrt, exp
 from statistics import NormalDist
+
+class 
