@@ -62,6 +62,13 @@ class Trader:
         self.VOLCANIC_ROCK_VOUCHER = {
             "position_limit": 200
         }
+        self.MACARONS = {
+            "position_limit": 75,
+            "conversion_limit": 10,
+            "storage_cost": 0.1,
+            "make_probability": 0.8
+
+        }
 
     def get_mm_price(self, order_depth: OrderDepth, product: str) -> float:
 
@@ -106,31 +113,73 @@ class Trader:
         return buyVolume, sellVolume
     
 
-    def implied_bid_ask_macaroons(self, orderDep: OrderDepth, observation: ConversionObservation) -> Tuple[float, float]:
+    def implied_bid_ask_macarons(observation: ConversionObservation) -> Tuple[float, float]:
         """
         Calculate implied bid and ask prices for macaroons based on order depth and observation data.
         """
-        buffer = 0.1    #! play around with this buffer to see if it improves performance
         return (
-            observation.bidPrice - observation.transportFees - observation.exportTariff - buffer,
+            observation.bidPrice - observation.transportFees - observation.exportTariff - self.MACARONS["storage_cost"],
             observation.askPrice + observation.transportFees + observation.importTariff
         )
         
-    def macaroons_take_orders(self, orderDep: OrderDepth, observation: ConversionObservation) -> Tuple[Order, Order]:
+    def macarons_take_orders(self, orderDep: OrderDepth, observation: ConversionObservation, position: int):
         """
         Take orders for macaroons based on implied bid/asks and observation data.
         """
-        implied_bid, implied_ask = self.implied_bid_ask_macaroons(orderDep, observation)
+        orders: List[Order] = []
+        take_width = 2
+        buy_order_volume = 0
+        sell_order_volume = 0
+
+        implied_bid, implied_ask = self.implied_bid_ask_macarons(observation)
+
+        buy_quantity = self.MACARONS["position_limit"] - position
+        sell_quantity = self.MACARONS["position_limit"] + position
+
+        take_ask = round(observation.bidPrice) - take_width  #! play around with this number to see if it improves performance
+    
+        edge = (take_ask - implied_ask) * self.MACARONS["make_probability"] if take_ask > implied_ask else 0
+
+        # 1) HITTING THE SELL ORDERS (we buy)
+        for price in sorted(orderDep.sell_orders.keys()):
+            if price > implied_bid - edge:
+                break
+            qty = min(orderDep.sell_orders[price], buy_quantity)
+            if qty > 0:
+                orders.append(Order("MAGNIFICENT_MACARONS", price, qty))
+                buy_order_volume += qty
+
+        # 2) HITTING THE BUY ORDERS (we sell)
+        for price in sorted(orderDep.buy_orders.keys(), reverse=True):
+            if price < implied_ask + edge:
+                break
+            qty = min(orderDep.buy_orders[price], sell_quantity)
+            if qty > 0:
+                orders.append(Order("MAGNIFICENT_MACARONS", price, -qty))
+                sell_order_volume += qty
+
+        return orders, buy_order_volume, sell_order_volume
+    
+    def macarons_conversions(self, position: int) -> int:
+        conversions = -position
+        return conversions  #! max with 10
+    
+
 
 
 
 
     def run(self, state: TradingState):
         result = {}
-
+        conversions = 1
 
         traderData = jsonpickle.encode({
         })
 
-        conversions = 1
+        if "MAGNIFICENT_MACARONS" in state.order_depths:
+            conversions = self.macarons_conversions(state.position["MAGNIFICENT_MACARONS"])
+            macarons_position = 0
+            macarons_orders, buy_order_volume, sell_order_volume = self.macarons_take_orders(state.order_depths["MAGNIFICENT_MACARONS"], state.observations.conversionObservations["MAGNIFICENT_MACARONS"], macarons_position)
+            result["MAGNIFICENT_MACARONS"] = macarons_orders
+
         return result, conversions, traderData
