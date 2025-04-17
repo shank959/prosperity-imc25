@@ -1,4 +1,4 @@
-from datamodel import OrderDepth, TradingState, Order
+from prosperity3bt.datamodel import OrderDepth, TradingState, Order
 import numpy as np
 import jsonpickle
 from typing import Dict, List, Any
