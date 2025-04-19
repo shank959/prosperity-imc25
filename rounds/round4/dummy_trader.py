@@ -262,19 +262,19 @@ class Trader:
 
         info["VOLCANIC_ROCK_VOUCHER_9500"]["upper_threshold"] = 0.00322
         info["VOLCANIC_ROCK_VOUCHER_9500"]["lower_threshold"] = -0.01665
-        info["VOLCANIC_ROCK_VOUCHER_9500"]["critical_boundary"] = 0.000432
+        info["VOLCANIC_ROCK_VOUCHER_9500"]["critical_boundary"] = 0.001
 
         info["VOLCANIC_ROCK_VOUCHER_9750"]["upper_threshold"] = 0.03894
         info["VOLCANIC_ROCK_VOUCHER_9750"]["lower_threshold"] = -0.00803
-        info["VOLCANIC_ROCK_VOUCHER_9750"]["critical_boundary"] = 0.00080
+        info["VOLCANIC_ROCK_VOUCHER_9750"]["critical_boundary"] = 0.001
 
         info["VOLCANIC_ROCK_VOUCHER_10000"]["upper_threshold"] = 0.00534
         info["VOLCANIC_ROCK_VOUCHER_10000"]["lower_threshold"] = -0.01640
-        info["VOLCANIC_ROCK_VOUCHER_10000"]["critical_boundary"] = 0.00040
+        info["VOLCANIC_ROCK_VOUCHER_10000"]["critical_boundary"] = 0.001
 
         info["VOLCANIC_ROCK_VOUCHER_10250"]["upper_threshold"] = 0.00502
         info["VOLCANIC_ROCK_VOUCHER_10250"]["lower_threshold"] = -0.02194
-        info["VOLCANIC_ROCK_VOUCHER_10250"]["critical_boundary"] = -0.02135
+        info["VOLCANIC_ROCK_VOUCHER_10250"]["critical_boundary"] = 0.001
 
         info["VOLCANIC_ROCK_VOUCHER_10500"]["upper_threshold"] = float("inf")
         info["VOLCANIC_ROCK_VOUCHER_10500"]["lower_threshold"] = float("-inf")
@@ -304,8 +304,8 @@ class Trader:
                 sell_amount = min(
                     voucher_position + 200,
                     best_voucher_bid_amount,
-                    (400 - underlying_position - underlying_order_count) // delta,
-                    max((best_underlying_ask_amount - underlying_ask_count), 0) // delta,
+                    # (400 - underlying_position - underlying_order_count) // delta,
+                    # max((best_underlying_ask_amount - underlying_ask_count), 0) // delta,
                     aggression
                 )
 
@@ -315,11 +315,11 @@ class Trader:
                         best_voucher_bid,
                         - round(sell_amount)
                     ))
-                    orders.append(Order(
-                        "VOLCANIC_ROCK",
-                        best_underlying_ask,
-                        round(sell_amount * delta)
-                    ))
+                    # orders.append(Order(
+                    #     "VOLCANIC_ROCK",
+                    #     best_underlying_ask,
+                    #     round(sell_amount * delta)
+                    # ))
 
                     underlying_order_count += round(sell_amount * delta)
                     underlying_ask_count += round(sell_amount * delta)
@@ -343,8 +343,8 @@ class Trader:
                 buy_amount = min(
                     200 - voucher_position,
                     abs(best_voucher_ask_amount),
-                    (400 + underlying_position + underlying_order_count) // delta,
-                    max(best_underlying_bid_amount - underlying_bid_count, 0) // delta,
+                    # (400 + underlying_position + underlying_order_count) // delta,
+                    # max(best_underlying_bid_amount - underlying_bid_count, 0) // delta,
                     aggression
                 )
 
@@ -354,11 +354,11 @@ class Trader:
                         best_voucher_ask,
                         round(buy_amount)
                     ))
-                    orders.append(Order(
-                        "VOLCANIC_ROCK",
-                        best_underlying_bid,
-                        - round(buy_amount * delta)
-                    ))
+                    # orders.append(Order(
+                    #     "VOLCANIC_ROCK",
+                    #     best_underlying_bid,
+                    #     - round(buy_amount * delta)
+                    # ))
                     underlying_order_count -= round(buy_amount * delta)
                     underlying_bid_count += round(buy_amount * delta)
 
@@ -374,8 +374,9 @@ class Trader:
                     sell_amount = min(
                         voucher_position,
                         best_voucher_bid_amount,
-                        (400 - underlying_position - underlying_order_count) // delta,
-                        max((best_underlying_ask_amount - underlying_ask_count), 0) // delta,
+                        # (400 - underlying_position - underlying_order_count) // delta,
+                        # max((best_underlying_ask_amount - underlying_ask_count), 0) // delta,
+                        aggression
                     )
 
                     if sell_amount > 0 and round(sell_amount * delta) > 0:
@@ -386,11 +387,11 @@ class Trader:
                             best_voucher_bid,
                             - round(sell_amount)
                         ))
-                        orders.append(Order(
-                            "VOLCANIC_ROCK",
-                            best_underlying_ask,
-                            round(sell_amount * delta)
-                        ))
+                        # orders.append(Order(
+                        #     "VOLCANIC_ROCK",
+                        #     best_underlying_ask,
+                        #     round(sell_amount * delta)
+                        # ))
 
                         underlying_order_count += round(sell_amount * delta)
                         underlying_ask_count += round(sell_amount * delta)
@@ -402,10 +403,11 @@ class Trader:
                         best_voucher_ask, 0))
 
                     buy_amount = min(
-                        -200 - voucher_position,
+                        - voucher_position,
                         abs(best_voucher_ask_amount),
-                        (400 + underlying_position + underlying_order_count) // delta,
-                        max(best_underlying_bid_amount - underlying_bid_count, 0) // delta,
+                        # (400 + underlying_position + underlying_order_count) // delta,
+                        # max(best_underlying_bid_amount - underlying_bid_count, 0) // delta,
+                        aggression
                     )
 
                     if round(buy_amount) > 0 and round(buy_amount * delta) > 0:
@@ -416,11 +418,11 @@ class Trader:
                             best_voucher_ask,
                             round(buy_amount)
                         ))
-                        orders.append(Order(
-                            "VOLCANIC_ROCK",
-                            best_underlying_bid,
-                            - round(buy_amount * delta)
-                        ))
+                        # orders.append(Order(
+                        #     "VOLCANIC_ROCK",
+                        #     best_underlying_bid,
+                        #     - round(buy_amount * delta)
+                        # ))
                         underlying_order_count -= round(buy_amount * delta)
                         underlying_bid_count += round(buy_amount * delta)
 
@@ -533,7 +535,7 @@ class Trader:
             orders += self.volc_orders(order_depth, positions, timestamp,
                                         average_entry_prices, aggression=float("inf"))
 
-            ## TEST FOR 10500 CHEESE
+            # TEST FOR 10500 CHEESE
             if "VOLCANIC_ROCK_VOUCHER_10500" in order_depth:
                 if order_depth["VOLCANIC_ROCK_VOUCHER_10500"].buy_orders:
                     best_bid = max(order_depth["VOLCANIC_ROCK_VOUCHER_10500"].buy_orders.keys())
