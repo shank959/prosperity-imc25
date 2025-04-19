@@ -625,7 +625,7 @@ class Trader:
         St = mid_price  # Current price of the underlying asset
         Vt = mid_option_price  # Current price of the option
 
-        TTE = (5 * 1e6 - timestamp)/(1e6 * 365) # we are in round 3 so 5 days (5 * 1e6) left in the round
+        TTE = (4 * 1e6 - timestamp)/(1e6 * 365) # we are in round 3 so 5 days (5 * 1e6) left in the round
         # print(TTE)
 
         # Define function to compute Black-Scholes implied volatility using Newton-Raphson
@@ -785,17 +785,17 @@ class Trader:
 
 
 
-        if "RAINFOREST_RESIN" in state.order_depths:
-            rfr_position = state.position["RAINFOREST_RESIN"] if "RAINFOREST_RESIN" in state.position else 0
-            rfr_orders = self.rfr_orders(
-                state.order_depths["RAINFOREST_RESIN"], rfr_fair_value, rfr_width, rfr_position, rfr_position_limit)
-            result["RAINFOREST_RESIN"] = rfr_orders
+        # if "RAINFOREST_RESIN" in state.order_depths:
+        #     rfr_position = state.position["RAINFOREST_RESIN"] if "RAINFOREST_RESIN" in state.position else 0
+        #     rfr_orders = self.rfr_orders(
+        #         state.order_depths["RAINFOREST_RESIN"], rfr_fair_value, rfr_width, rfr_position, rfr_position_limit)
+        #     result["RAINFOREST_RESIN"] = rfr_orders
 
-        if "KELP" in state.order_depths:
-            KELP_position = state.position["KELP"] if "KELP" in state.position else 0
-            kelpOrders = self.kelpOrders(
-                state.order_depths["KELP"], KELP_timemspan, KELP_make_width, kelpWidth, KELP_position, KELP_position_limit)
-            result["KELP"] = kelpOrders
+        # if "KELP" in state.order_depths:
+        #     KELP_position = state.position["KELP"] if "KELP" in state.position else 0
+        #     kelpOrders = self.kelpOrders(
+        #         state.order_depths["KELP"], KELP_timemspan, KELP_make_width, kelpWidth, KELP_position, KELP_position_limit)
+        #     result["KELP"] = kelpOrders
 
         # if "SQUID_INK" in state.order_depths:
         #     squid_position = state.position["SQUID_INK"] if "SQUID_INK" in state.position else 0
