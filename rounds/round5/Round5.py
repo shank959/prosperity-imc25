@@ -681,7 +681,7 @@ class Trader:
             S: float,
             V: float,
             K: int,
-            TTT: float,
+            TTE: float,
             low: float = 1e-4,
             high: float = 1.0,
             tol: float = 1e-4,
@@ -693,8 +693,8 @@ class Trader:
         N = NormalDist()
         for _ in range(max_iter):
             iv = (low + high) / 2
-            d1 = (log(S / K) + (0.5 * high**2) * TTT) / (high * sqrt(TTT))
-            d2 = d1 - high * sqrt(TTT)
+            d1 = (log(S / K) + (0.5 * high**2) * TTE) / (high * sqrt(TTE))
+            d2 = d1 - high * sqrt(TTE)
             delta = N.cdf(d1)
             price = S * delta - K * N.cdf(d2)
             if abs(price - V) < tol:
@@ -703,6 +703,34 @@ class Trader:
                 high = iv
             else:
                 low = iv
+        return iv, delta
+
+    def newton_iv(
+            self,
+            S: float,
+            V: float,
+            K: int,
+            TTE: float,
+            iv: float = 0.2,
+            tol: float = 1e-4,
+            max_iter: int = 50
+    ) -> Tuple[float, float]:
+        """
+        Newton's method to find the implied volatility and delta.
+        """
+        N = NormalDist()
+        for _ in range(max_iter):
+            d1 = (log(S / K) + (0.5 * iv**2) * TTE) / (iv * sqrt(TTE))
+            d2 = d1 - iv * sqrt(TTE)
+            delta = N.cdf(d1)
+            price = S * delta - K * N.cdf(d2)
+            vega = S * N.pdf(d1) * sqrt(TTE)
+            if vega < 1e-5:
+                return self.bisection_iv(
+                    S, V, K, TTE, low=1e-4, high=1.0, tol=tol)
+            iv -= (price - V) / vega
+            if abs(price - V) < tol:
+                return iv, delta
         return iv, delta
 
     def black_scholes_price(
@@ -726,8 +754,7 @@ class Trader:
             self,
             order_depth: OrderDepth,
             positions: Dict[str, int],
-            timestamp: int,
-            volcanic_rock_data: Dict[str, Dict[str, Any]],
+            timestamp: int
     ) -> List[Order]:
         """
         """
@@ -742,7 +769,7 @@ class Trader:
         for strike in strikes:
             product = f"VOLCANIC_ROCK_VOUCHER_{strike}"
             V = self.mid_price(product, order_depth)
-            iv, delta = self.bisection_iv(
+            iv, delta = self.newton_iv(
                 S,
                 V,
                 strike,
@@ -775,26 +802,17 @@ class Trader:
 
         # === COMPUTE FAIR PRICE ===
         for product, data in info.items():
-            if data['iv'] <= 0:
+            if data['iv_fit'] <= 0:
                 data["fair_value"] = 0.0
                 continue
             data["fair_value"] = self.black_scholes_price(
                 S,
                 data["strike"],
                 TTE,
-                data["iv"]
+                data["iv_fit"]
             )
-            # sending to trader data
-            volcanic_rock_data[product]['mid_price'].append(
-                info[product]["mid_price"])
-            volcanic_rock_data[product]['iv'].append(
-                info[product]["iv"])
-            volcanic_rock_data[product]['iv_fit'].append(
-                info[product]["iv_fit"])
-            volcanic_rock_data[product]['fair_value'].append(
-                info[product]["fair_value"])
-            volcanic_rock_data[product]['moneyness'].append(
-                info[product]["moneyness"])
+
+        print(info)
 
         # === ORDERS ===
         pos_lim =\
@@ -850,33 +868,43 @@ class Trader:
             fair_ask = math.ceil(fair_value)
             fair_bid = math.floor(fair_value)
 
-            if pos_after_take > 0 and\
-                    fair_ask in order_depth[product].buy_orders:
+            if pos_after_take > 0:
                 # want to sell
-                clear_sell_amt = min(
-                    order_depth[product].buy_orders[fair_ask],
-                    pos_after_take,
-                    pos_lim + (pos - sell_amt)
-                )
-                if clear_sell_amt > 0:
-                    sell_amt += clear_sell_amt
-                    orders.append(Order(
-                        product, fair_ask, -clear_sell_amt))
-                    print(f"[CLEAR OFFER] {clear_sell_amt} @ {fair_ask}")
+                better_asks = [
+                    price for price in order_depth[product].buy_orders
+                    if price >= fair_ask
+                ]
+                if better_asks:
+                    best_ask = max(better_asks)
+                    clear_sell_amt = min(
+                        order_depth[product].buy_orders[best_ask],
+                        pos_after_take,
+                        pos_lim + (pos - sell_amt)
+                    )
+                    if clear_sell_amt > 0:
+                        sell_amt += clear_sell_amt
+                        orders.append(Order(
+                            product, best_ask, -clear_sell_amt))
+                        print(f"[CLEAR OFFER] {clear_sell_amt} @ {best_ask}")
 
-            elif pos_after_take < 0 and\
-                    fair_bid in order_depth[product].sell_orders:
+            elif pos_after_take < 0:
                 # want to buy
-                clear_buy_amt = min(
-                    abs(order_depth[product].sell_orders[fair_bid]),
-                    -pos_after_take,
-                    pos_lim - (pos + buy_amt)
-                )
-                if clear_buy_amt > 0:
-                    buy_amt += clear_buy_amt
-                    orders.append(
-                        Order(product, fair_bid, clear_buy_amt))
-                    print(f"[CLEAR BID] {clear_buy_amt} @ {fair_bid}")
+                better_bids = [
+                    price for price in order_depth[product].sell_orders
+                    if price <= fair_bid
+                ]
+                if better_bids:
+                    best_bid = min(better_bids)
+                    clear_buy_amt = min(
+                        abs(order_depth[product].sell_orders[best_bid]),
+                        -pos_after_take,
+                        pos_lim - (pos + buy_amt)
+                    )
+                    if clear_buy_amt > 0:
+                        buy_amt += clear_buy_amt
+                        orders.append(
+                            Order(product, best_bid, clear_buy_amt))
+                        print(f"[CLEAR BID] {clear_buy_amt} @ {best_bid}")
 
             # === MAKE ===
             asks_above_fair_value = [
@@ -886,7 +914,7 @@ class Trader:
             baaf = min(asks_above_fair_value)\
                 if asks_above_fair_value\
                 else math.ceil(fair_value + make_sell_width)
-            make_sell_amt = pos_lim + (pos - sell_amt)
+            make_sell_amt = max(pos_lim + (pos - sell_amt), 20)
             print(f"Make sell amount: {make_sell_amt}")
             if make_sell_amt > 0:
                 orders.append(Order(
@@ -900,7 +928,7 @@ class Trader:
             bbbf = max(bids_below_fair_value)\
                 if bids_below_fair_value\
                 else math.floor(fair_value - make_buy_width)
-            make_buy_amt = pos_lim - (pos + buy_amt)
+            make_buy_amt = max(pos_lim - (pos + buy_amt), 20)
             if make_buy_amt > 0:
                 orders.append(Order(
                     product, bbbf + 1, make_buy_amt))
@@ -930,16 +958,6 @@ class Trader:
             if state.traderData else {}
         kelp_historical = traderData.get("kelp_historical", [])
         squid_ink_historical = traderData.get("squid_ink_historical", [])
-        volcanic_rock_data = traderData.get("volcanic_rock_data", {
-            f"VOLCANIC_ROCK_VOUCHER_{K}": {
-                "mid_price": [],
-                "iv": [],
-                "iv_fit": [],
-                "fair_value": [],
-                "moneyness": [],
-            }
-            for K in self.PRODUCT_HYPERPARAMS["VOLCANIC_ROCK"]["strikes"]
-        })
 
         # === ORDER CALLS ===
         # if "RAINFOREST_RESIN" in order_depth:
@@ -977,8 +995,7 @@ class Trader:
             orders = self.VOLCANIC_ROCK_order(
                 order_depth,
                 positions,
-                timestamp,
-                volcanic_rock_data
+                timestamp
             )
             for order in orders:
                 result.setdefault(order.symbol, []).append(order)
@@ -990,7 +1007,6 @@ class Trader:
         # === PICKLE TRADER DATA ===
         traderData["kelp_historical"] = kelp_historical
         traderData["squid_ink_historical"] = squid_ink_historical
-        traderData["volcanic_rock_data"] = volcanic_rock_data
         traderData = jsonpickle.encode(traderData)
 
         return result, conversions, traderData
