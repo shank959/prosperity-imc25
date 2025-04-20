@@ -82,7 +82,15 @@ class Trader:
             },
             "MAGNIFICENT_MACARONS": {
                 "pos_lim": 75,
-            },
+                "storage_cost": 0.1,
+                "take_buy_width": 1,
+                "take_sell_width": 1,
+                "make_buy_width": 1,
+                "make_sell_width": 1,
+                "critical_sunlight_index": 44.95,
+                "conversion_limit": 10,
+                "mm_size": 21
+            }
         }
 
     # ============================
@@ -119,7 +127,7 @@ class Trader:
                       in order_depth[product].sell_orders.items()
                       if abs(qty) >= mm_size), default=0)
 
-        return (mm_bid + mm_ask) / 2 if mm_bid and mm_ask else mm_bid + mm_ask
+        return (mm_bid + mm_ask) / 2 if mm_bid and mm_ask else self.mid_price(product, order_depth)
 
     # ============================
     # RAINFOREST_RESIN SECTION
@@ -517,6 +525,97 @@ class Trader:
         orders = []
 
         return orders
+    
+    # ============================
+    # MAGNIFICENT_MACARONS SECTION
+    # ============================
+
+    def MAGNIFICENT_MACARONS_order(
+            self,
+            order_depth: OrderDepth,
+            observation: Observation,
+            pos: int
+    ) -> List[Order]:
+        """
+        """
+        orders = []
+
+        pos_lim = self.PRODUCT_HYPERPARAMS["MAGNIFICENT_MACARONS"]["pos_lim"]
+        take_buy_width = self.PRODUCT_HYPERPARAMS["MAGNIFICENT_MACARONS"].get(
+            "take_buy_width", 1)
+        take_sell_width = self.PRODUCT_HYPERPARAMS["MAGNIFICENT_MACARONS"].get(
+            "take_sell_width", 1)
+        make_buy_width = self.PRODUCT_HYPERPARAMS["MAGNIFICENT_MACARONS"].get(
+            "make_buy_width", 1)
+        make_sell_width = self.PRODUCT_HYPERPARAMS["MAGNIFICENT_MACARONS"].get(
+            "make_sell_width", 1)
+        conversion_limit = self.PRODUCT_HYPERPARAMS["MAGNIFICENT_MACARONS"].get(
+            "conversion_limit", 10)
+        conversion_amt = 0
+        
+        # DETERMINE CURRENT MODE
+        sunlight_index = observation.sunlightIndex
+        if sunlight_index > self.PRODUCT_HYPERPARAMS["MAGNIFICENT_MACARONS"]["critical_sunlight_index"]:
+            mode = "STANDARD"
+        else:
+            mode = "PANIC"
+
+        # === STANDARD MODE ===
+        if mode == "STANDARD":
+            # === EXCHANGE ARBITRAGE ORDERS === #! should be performed regardless of the mode?
+            sell_amt = 0
+            buy_amt = 0
+
+            # implied_bid = observation.bidPrice - observation.transportFees - observation.exportTariff - self.PRODUCT_HYPERPARAMS["MAGNIFICENT_MACARONS"]["storage_cost"]
+            # implied_ask = observation.askPrice + observation.transportFees + observation.importTariff
+            # local_best_ask = min(order_depth["MAGNIFICENT_MACARONS"].sell_orders.keys(), default=float("inf"))
+            # local_best_bid = max(order_depth["MAGNIFICENT_MACARONS"].buy_orders.keys(), default=0)
+
+            # # HITTING THE SELL ORDERS (we buy local and export at implied bid)
+            # if local_best_ask < implied_bid - take_buy_width:
+            #     buy_qty = min(order_depth["MAGNIFICENT_MACARONS"].sell_orders[local_best_ask], conversion_limit)
+            #     orders.append(Order("MAGNIFICENT_MACARONS", local_best_ask, buy_qty))
+            #     conversion_amt -= buy_qty
+            
+            # # HITTING THE BUY ORDERS (we sell local and import at implied ask)
+            # if local_best_bid > implied_ask + take_sell_width:
+            #     sell_qty = min(order_depth["MAGNIFICENT_MACARONS"].buy_orders[local_best_bid], conversion_limit)
+            #     orders.append(Order("MAGNIFICENT_MACARONS", local_best_bid, -sell_qty))
+            #     conversion_amt += sell_qty
+            
+            # === MAKE ORDERS ===
+            # Determine fair value
+            fair_value = self.market_maker_mid("MAGNIFICENT_MACARONS", order_depth)
+            make_amt_limit = pos_lim - (pos + (buy_amt - sell_amt))
+
+            asks_above_fair_value = [
+                price for price in order_depth["MAGNIFICENT_MACARONS"].sell_orders
+                if price > fair_value + make_sell_width
+            ]
+            baaf = min(asks_above_fair_value)\
+                if asks_above_fair_value\
+                else math.ceil(fair_value + make_sell_width)
+            print(f"Make sell amount: {make_amt_limit}")
+            if make_amt_limit > 0:
+                orders.append(Order(
+                    "MAGNIFICENT_MACARONS", baaf - 1, -make_amt_limit))
+                print(f"[MAKE OFFER] {make_amt_limit} @ {baaf - 1}")
+
+            bids_below_fair_value = [
+                price for price in order_depth["MAGNIFICENT_MACARONS"].buy_orders
+                if price < fair_value - make_buy_width
+            ]
+            bbbf = max(bids_below_fair_value)\
+                if bids_below_fair_value\
+                else math.floor(fair_value - make_buy_width)
+            if make_amt_limit > 0:
+                orders.append(Order(
+                    "MAGNIFICENT_MACARONS", bbbf + 1, make_amt_limit))
+                print(f"[MAKE BID] {make_amt_limit} @ {bbbf + 1}")
+
+
+        return orders, conversion_amt
+
 
     # ============================
     # MAIN
@@ -555,14 +654,14 @@ class Trader:
         #         pos
         #     )
 
-        if "SQUID_INK" in order_depth:
-            pos = positions.get("SQUID_INK", 0)
-            orders, squid_ink_historical = self.SQUID_INK_order(
-                order_depth,
-                pos,
-                squid_ink_historical
-            )
-            result["SQUID_INK"] = orders
+        # if "SQUID_INK" in order_depth:
+        #     pos = positions.get("SQUID_INK", 0)
+        #     orders, squid_ink_historical = self.SQUID_INK_order(
+        #         order_depth,
+        #         pos,
+        #         squid_ink_historical
+        #     )
+        #     result["SQUID_INK"] = orders
 
         if "PICNIC_BASKET1" in order_depth:
             pos = positions.get("PICNIC_BASKET1", 0)
@@ -582,7 +681,13 @@ class Trader:
 
         if "MAGNIFICENT_MACARONS" in order_depth:
             pos = positions.get("MAGNIFICENT_MACARONS", 0)
-            pass
+            observation = state.observations.conversionObservations["MAGNIFICENT_MACARONS"]
+            orders, conversions = self.MAGNIFICENT_MACARONS_order(
+                order_depth,
+                observation,
+                pos
+            )
+            result["MAGNIFICENT_MACARONS"] = orders
 
         # === PICKLE TRADER DATA ===
         traderData["squid_ink_historical"] = squid_ink_historical
