@@ -1,5 +1,6 @@
-from datamodel import OrderDepth, UserId, TradingState, Order, Observation, ConversionObservation  # noqa F401
-from typing import List, Dict, Tuple, Any 
+from datamodel import OrderDepth, \
+    TradingState, Order, Observation, ConversionObservation
+from typing import List, Dict, Tuple, Any
 import string
 import jsonpickle
 import numpy as np
@@ -18,9 +19,18 @@ class Trader:
             },
             "KELP": {
                 "pos_lim": 50,
+                "take_buy_width": 1,
+                "take_sell_width": 1,
+                "mm_size": 15
             },
             "SQUID_INK": {
                 "pos_lim": 50,
+                "take_buy_width": 1,
+                "take_sell_width": 1,
+                "make_buy_width": 2,
+                "make_sell_width": 2,
+                "mm_size": 15,
+                "reversion_beta": -0.229,
             },
             "CROISSANTS": {
                 "pos_lim": 250,
@@ -94,23 +104,22 @@ class Trader:
     def market_maker_mid(self, product, order_depth: OrderDepth) -> float:
         """
         Calculate the market maker mid price from the order depth.
-        If no market maker size known then returns midprice.
+        If no market maker size is known, then returns the mid price.
         """
-        if not self.PARAMETERS[product]['mm_size']:
+        if 'mm_size' not in self.PRODUCT_HYPERPARAMS[product]:
             return self.mid_price(product, order_depth)
+
+        mm_size = self.PRODUCT_HYPERPARAMS[product]['mm_size']
 
         mm_bid = max((price for price, qty
                       in order_depth[product].buy_orders.items()
-                      if qty > self.PARAMETERS[product]['mm_size']))\
-            if order_depth[product].buy_orders else 0
+                      if qty >= mm_size), default=0)
 
         mm_ask = min((price for price, qty
                       in order_depth[product].sell_orders.items()
-                      if qty > self.PARAMETERS[product]['mm_size']))\
-            if order_depth[product].sell_orders else 0
+                      if abs(qty) >= mm_size), default=0)
 
-        return (mm_bid + mm_ask) / 2 if mm_bid and mm_ask\
-            else mm_bid + mm_ask
+        return (mm_bid + mm_ask) / 2 if mm_bid and mm_ask else mm_bid + mm_ask
 
     # ============================
     # RAINFOREST_RESIN SECTION
@@ -225,6 +234,7 @@ class Trader:
     # ============================
     # KELP SECTION
     # ============================
+
     def KELP_order(
             self,
             order_depth: OrderDepth,
@@ -238,11 +248,278 @@ class Trader:
         """
         orders = []
         pos_lim = self.PRODUCT_HYPERPARAMS["KELP"]["pos_lim"]
+        take_buy_width = self.PRODUCT_HYPERPARAMS["KELP"].get(
+            "take_buy_width", 1)
+        take_sell_width = self.PRODUCT_HYPERPARAMS["KELP"].get(
+            "take_sell_width", 1)
+
+        # === CALCULATE FAIR VALUE ===
+        fair_value = self.market_maker_mid(
+            "KELP", order_depth
+        )
+
+        # === TAKE ===
+        sell_amt = 0
+        buy_amt = 0
+
+        if order_depth["KELP"].buy_orders:
+            best_bid = max(order_depth["KELP"].buy_orders.keys())
+            if best_bid > fair_value + take_sell_width:
+                take_sell_amt = min(
+                    order_depth["KELP"].buy_orders[best_bid],
+                    pos + pos_lim
+                )
+                sell_amt += take_sell_amt
+                orders.append(Order(
+                    "KELP", round(best_bid), -take_sell_amt))
+                print(f"[TAKE OFFER] {take_sell_amt} @ {best_bid}")
+
+        if order_depth["KELP"].sell_orders:
+            best_ask = min(order_depth["KELP"].sell_orders.keys())
+            if best_ask < fair_value - take_buy_width:
+                take_buy_amt = min(
+                    abs(order_depth["KELP"].sell_orders[best_ask]),
+                    pos_lim - pos
+                )
+                buy_amt += take_buy_amt
+                orders.append(Order(
+                    "KELP", round(best_ask), take_buy_amt))
+                print(f"[TAKE BID] {take_buy_amt} @ {best_ask}")
+
+        pos_after_take = pos + buy_amt - sell_amt
+        print(f"Position after take: {pos_after_take}")
+
+        # === CLEAR ===
+        clear_buy_amt = 0
+        clear_sell_amt = 0
+        fair_ask = math.ceil(fair_value)
+        fair_bid = math.floor(fair_value)
+
+        if pos_after_take > 0 and\
+                fair_ask in order_depth["KELP"].buy_orders:
+            # want to sell
+            clear_sell_amt = min(
+                order_depth["KELP"].buy_orders[fair_ask],
+                pos_after_take,
+                pos_lim + (pos - sell_amt)
+            )
+            if clear_sell_amt > 0:
+                sell_amt += clear_sell_amt
+                orders.append(Order(
+                    "KELP", fair_ask, -clear_sell_amt))
+                print(f"[CLEAR OFFER] {clear_sell_amt} @ {fair_ask}")
+
+        elif pos_after_take < 0 and\
+                fair_bid in order_depth["KELP"].sell_orders:
+            # want to buy
+            clear_buy_amt = min(
+                abs(order_depth["KELP"].sell_orders[fair_bid]),
+                -pos_after_take,
+                pos_lim - (pos + buy_amt)
+            )
+            if clear_buy_amt > 0:
+                buy_amt += clear_buy_amt
+                orders.append(
+                    Order("KELP", fair_bid, clear_buy_amt))
+                print(f"[CLEAR BID] {clear_buy_amt} @ {fair_bid}")
+
+        # === MAKE ===
+        asks_above_fair_value = [
+            price for price in order_depth["KELP"].sell_orders
+            if price > fair_value + 1
+        ]
+        baaf = min(asks_above_fair_value)\
+            if asks_above_fair_value else fair_value + 2
+        make_sell_amt = pos_lim + (pos - sell_amt)
+        print(f"Make sell amount: {make_sell_amt}")
+        if make_sell_amt > 0:
+            orders.append(Order("KELP", baaf - 1, -make_sell_amt))
+            print(f"[MAKE OFFER] {make_sell_amt} @ {baaf - 1}")
+
+        bids_below_fair_value = [
+            price for price in order_depth["KELP"].buy_orders
+            if price < fair_value - 1
+        ]
+        bbbf = max(bids_below_fair_value)\
+            if bids_below_fair_value else fair_value - 2
+        make_buy_amt = pos_lim - (pos + buy_amt)
+        if make_buy_amt > 0:
+            orders.append(Order("KELP", bbbf + 1, make_buy_amt))
+            print(f"[MAKE BID] {make_buy_amt} @ {bbbf + 1}")
 
         return orders
 
     # ============================
     # SQUID_INK SECTION
+    # ============================
+
+    def SQUID_INK_order(
+            self,
+            order_depth: OrderDepth,
+            pos: int,
+            historical: List[float]
+    ) -> List[Order]:
+        """
+        Calculates fair value.
+        Buys/sell below/above fairvalue -/+ width.
+        Clears positions at a EV at least 0.
+        Market makes above and below fair value but
+        with asymetric width based on mean reversion
+        """
+        orders = []
+        pos_lim = self.PRODUCT_HYPERPARAMS["SQUID_INK"]["pos_lim"]
+        take_buy_width = self.PRODUCT_HYPERPARAMS["SQUID_INK"].get(
+            "take_buy_width", 1)
+        take_sell_width = self.PRODUCT_HYPERPARAMS["SQUID_INK"].get(
+            "take_sell_width", 1)
+        make_buy_width = self.PRODUCT_HYPERPARAMS["SQUID_INK"].get(
+            "make_buy_width", 1)
+        make_sell_width = self.PRODUCT_HYPERPARAMS["SQUID_INK"].get(
+            "make_sell_width", 1)
+
+        # === CALCULATE FAIR VALUE ===
+        mm_mid = self.market_maker_mid("SQUID_INK", order_depth)
+        reversion_beta = self.PRODUCT_HYPERPARAMS["SQUID_INK"].get(
+            "reversion_beta", 1)
+        if historical:
+            prev_mm_mid = historical[-1]
+            fair_value = (
+                ((mm_mid - prev_mm_mid)/prev_mm_mid
+                    * reversion_beta) * mm_mid + mm_mid
+            )
+        else:
+            fair_value = mm_mid
+
+        historical.append(fair_value)
+
+        # === TAKE ===
+        sell_amt = 0
+        buy_amt = 0
+
+        if order_depth["SQUID_INK"].buy_orders:
+            best_bid = max(order_depth["SQUID_INK"].buy_orders.keys())
+            if best_bid > fair_value + take_sell_width:
+                take_sell_amt = min(
+                    order_depth["SQUID_INK"].buy_orders[best_bid],
+                    pos + pos_lim
+                )
+                sell_amt += take_sell_amt
+                orders.append(Order(
+                    "SQUID_INK", round(best_bid), -take_sell_amt))
+                print(f"[TAKE OFFER] {take_sell_amt} @ {best_bid}")
+
+        if order_depth["SQUID_INK"].sell_orders:
+            best_ask = min(order_depth["SQUID_INK"].sell_orders.keys())
+            if best_ask < fair_value - take_buy_width:
+                take_buy_amt = min(
+                    abs(order_depth["SQUID_INK"].sell_orders[best_ask]),
+                    pos_lim - pos
+                )
+                buy_amt += take_buy_amt
+                orders.append(Order(
+                    "SQUID_INK", round(best_ask), take_buy_amt))
+                print(f"[TAKE BID] {take_buy_amt} @ {best_ask}")
+
+        pos_after_take = pos + buy_amt - sell_amt
+        print(f"Position after take: {pos_after_take}")
+
+        # === CLEAR ===
+        clear_buy_amt = 0
+        clear_sell_amt = 0
+        fair_ask = math.ceil(fair_value)
+        fair_bid = math.floor(fair_value)
+
+        if pos_after_take > 0 and\
+                fair_ask in order_depth["SQUID_INK"].buy_orders:
+            # want to sell
+            clear_sell_amt = min(
+                order_depth["SQUID_INK"].buy_orders[fair_ask],
+                pos_after_take,
+                pos_lim + (pos - sell_amt)
+            )
+            if clear_sell_amt > 0:
+                sell_amt += clear_sell_amt
+                orders.append(Order(
+                    "SQUID_INK", fair_ask, -clear_sell_amt))
+                print(f"[CLEAR OFFER] {clear_sell_amt} @ {fair_ask}")
+
+        elif pos_after_take < 0 and\
+                fair_bid in order_depth["SQUID_INK"].sell_orders:
+            # want to buy
+            clear_buy_amt = min(
+                abs(order_depth["SQUID_INK"].sell_orders[fair_bid]),
+                -pos_after_take,
+                pos_lim - (pos + buy_amt)
+            )
+            if clear_buy_amt > 0:
+                buy_amt += clear_buy_amt
+                orders.append(
+                    Order("SQUID_INK", fair_bid, clear_buy_amt))
+                print(f"[CLEAR BID] {clear_buy_amt} @ {fair_bid}")
+
+        # === MAKE ===
+        asks_above_fair_value = [
+            price for price in order_depth["SQUID_INK"].sell_orders
+            if price > fair_value + make_sell_width
+        ]
+        baaf = min(asks_above_fair_value)\
+            if asks_above_fair_value\
+            else math.ceil(fair_value + make_sell_width)
+        make_sell_amt = pos_lim + (pos - sell_amt)
+        print(f"Make sell amount: {make_sell_amt}")
+        if make_sell_amt > 0:
+            orders.append(Order(
+                "SQUID_INK", baaf - 1, -make_sell_amt))
+            print(f"[MAKE OFFER] {make_sell_amt} @ {baaf - 1}")
+
+        bids_below_fair_value = [
+            price for price in order_depth["SQUID_INK"].buy_orders
+            if price < fair_value - make_buy_width
+        ]
+        bbbf = max(bids_below_fair_value)\
+            if bids_below_fair_value\
+            else math.floor(fair_value - make_buy_width)
+        make_buy_amt = pos_lim - (pos + buy_amt)
+        if make_buy_amt > 0:
+            orders.append(Order(
+                "SQUID_INK", bbbf + 1, make_buy_amt))
+            print(f"[MAKE BID] {make_buy_amt} @ {bbbf + 1}")
+
+        return orders, historical
+
+    # ============================
+    # PICNIC_BASKET SECTION
+    # ============================
+
+    def PICNIC_BASKET_order(
+            self,
+            order_depth: OrderDepth,
+            positions: Dict[str, int]
+    ) -> List[Order]:
+        """
+        """
+        orders = []
+
+        return orders
+
+    # ============================
+    # VOLCANIC_ROCK SECTION
+    # ============================
+
+    def VOLCANIC_ROCK_order(
+            self,
+            order_depth: OrderDepth,
+            positions: Dict[str, int],
+            timestamp: int
+    ) -> List[Order]:
+        """
+        """
+        orders = []
+
+        return orders
+
+    # ============================
+    # MAIN
     # ============================
 
     def run(
@@ -252,27 +529,40 @@ class Trader:
         # initialise the output
         result = {}
         conversions = 0
-        traderData = jsonpickle.decode(state.traderData)\
-            if state.traderData else {}
 
-        # get the main data
+        # === STATE DATA ===
         timestamp: int = state.timestamp
         order_depth: OrderDepth = state.order_depths
         positions: Dict[str, int] = state.position
 
-        if "RAINFOREST_RESIN" in order_depth:
-            pos = positions.get("RAINFOREST_RESIN", 0)
-            result["RAINFOREST_RESIN"] = self.RAINFOREST_RESIN_order(
-                order_depth,
-                pos
-            )
+        # === TRADER DATA ===
+        traderData = jsonpickle.decode(state.traderData)\
+            if state.traderData else {}
+        squid_ink_historical = traderData.get("squid_ink_historical", [])
 
-        if "KELP" in order_depth:
-            pos = positions.get("KELP", 0)
-            result["KELP"] = self.KELP_order(
+        # === ORDER CALLS ===
+        # if "RAINFOREST_RESIN" in order_depth:
+        #     pos = positions.get("RAINFOREST_RESIN", 0)
+        #     result["RAINFOREST_RESIN"] = self.RAINFOREST_RESIN_order(
+        #         order_depth,
+        #         pos
+        #     )
+
+        # if "KELP" in order_depth:
+        #     pos = positions.get("KELP", 0)
+        #     result["KELP"] = self.KELP_order(
+        #         order_depth,
+        #         pos
+        #     )
+
+        if "SQUID_INK" in order_depth:
+            pos = positions.get("SQUID_INK", 0)
+            orders, squid_ink_historical = self.SQUID_INK_order(
                 order_depth,
-                pos
+                pos,
+                squid_ink_historical
             )
+            result["SQUID_INK"] = orders
 
         if "PICNIC_BASKET1" in order_depth:
             pos = positions.get("PICNIC_BASKET1", 0)
@@ -283,13 +573,19 @@ class Trader:
             pass
 
         if "VOLCANIC_ROCK" in order_depth:
-            pos = positions.get("VOLCANIC_ROCK", 0)
-            pass
+            orders = self.VOLCANIC_ROCK_order(
+                order_depth,
+                positions,
+                timestamp
+            )
+            result["VOLCANIC_ROCK"] = orders
 
         if "MAGNIFICENT_MACARONS" in order_depth:
             pos = positions.get("MAGNIFICENT_MACARONS", 0)
             pass
 
+        # === PICKLE TRADER DATA ===
+        traderData["squid_ink_historical"] = squid_ink_historical
         traderData = jsonpickle.encode(traderData)
 
         return result, conversions, traderData

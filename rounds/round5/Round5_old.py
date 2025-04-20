@@ -1056,17 +1056,17 @@ class Trader:
             traderObject = jsonpickle.decode(state.traderData)
             self.MACARONS["sunlight_data"] = traderObject["sunlight_data"]
 
-        if "RAINFOREST_RESIN" in state.order_depths:
-            rfr_position = state.position["RAINFOREST_RESIN"] if "RAINFOREST_RESIN" in state.position else 0
-            rfr_orders = self.rfr_orders(
-                state.order_depths["RAINFOREST_RESIN"], rfr_fair_value, rfr_width, rfr_position, rfr_position_limit)
-            result["RAINFOREST_RESIN"] = rfr_orders
+        # if "RAINFOREST_RESIN" in state.order_depths:
+        #     rfr_position = state.position["RAINFOREST_RESIN"] if "RAINFOREST_RESIN" in state.position else 0
+        #     rfr_orders = self.rfr_orders(
+        #         state.order_depths["RAINFOREST_RESIN"], rfr_fair_value, rfr_width, rfr_position, rfr_position_limit)
+        #     result["RAINFOREST_RESIN"] = rfr_orders
 
-        # if "KELP" in state.order_depths:
-        #     KELP_position = state.position["KELP"] if "KELP" in state.position else 0
-        #     kelpOrders = self.kelpOrders(
-        #         state.order_depths["KELP"], KELP_timemspan, KELP_make_width, kelpWidth, KELP_position, KELP_position_limit)
-        #     result["KELP"] = kelpOrders
+        if "KELP" in state.order_depths:
+            KELP_position = state.position["KELP"] if "KELP" in state.position else 0
+            kelpOrders = self.kelpOrders(
+                state.order_depths["KELP"], KELP_timemspan, KELP_make_width, kelpWidth, KELP_position, KELP_position_limit)
+            result["KELP"] = kelpOrders
 
 
         # if state.own_trades.get("MAGNIFICENT_MACARONS", 0):
