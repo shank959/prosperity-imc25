@@ -32,6 +32,7 @@ class Trader:
                 "pos_lim": 50,
                 "take_buy_width": 1,
                 "take_sell_width": 1,
+                "clear_width": -1,
                 "make_buy_width": 2,
                 "make_sell_width": 2,
                 "mm_size": 15,
@@ -186,6 +187,7 @@ class Trader:
         order_depth: OrderDepth,
         product: str,
         pos: int,
+        fair_value: float,
     ) -> List[Order]:
         """
         General order machine for the products
@@ -197,11 +199,12 @@ class Trader:
             "take_buy_width", 1)
         take_sell_width = self.PRODUCT_HYPERPARAMS[product].get(
             "take_sell_width", 1)
+        clear_width = self.PRODUCT_HYPERPARAMS[product].get(
+            "clear_width", 0)
         make_buy_width = self.PRODUCT_HYPERPARAMS[product].get(
             "make_buy_width", 1)
         make_sell_width = self.PRODUCT_HYPERPARAMS[product].get(
             "make_sell_width", 1)
-        fair_value = self.market_maker_mid(product, order_depth)
 
         # === TAKE ===
         sell_amt = 0
@@ -225,7 +228,7 @@ class Trader:
                         del order_depth[product].buy_orders[bid]
                     orders.append(Order(
                         product, round(bid), -take_sell_amt_per))
-                print(f"[TAKE OFFER] {take_sell_amt} @ {bid}")
+                print(f"[TAKE OFFER] {take_sell_amt} {product} @ {bid}")
 
         if order_depth[product].sell_orders:
             asks_above_fair_value = [
@@ -245,10 +248,10 @@ class Trader:
                         del order_depth[product].sell_orders[ask]
                     orders.append(Order(
                         product, round(ask), take_buy_amt_per))
-                print(f"[TAKE BID] {take_buy_amt} @ {ask}")
+                print(f"[TAKE BID] {take_buy_amt} {product} @ {ask}")
 
         pos_after_take = pos + buy_amt - sell_amt
-        print(f"Position after take: {pos_after_take}")
+        # print(f"Position after take: {pos_after_take}")
 
         # === CLEAR ===
         clear_buy_amt = 0
@@ -256,33 +259,45 @@ class Trader:
         fair_ask = math.ceil(fair_value)
         fair_bid = math.floor(fair_value)
 
-        if pos_after_take > 0 and\
-                fair_ask in order_depth[product].buy_orders:
+        if pos_after_take > 0:
             # want to sell
-            clear_sell_amt = min(
-                order_depth[product].buy_orders[fair_ask],
-                pos_after_take,
-                pos_lim + (pos - sell_amt)
-            )
-            if clear_sell_amt > 0:
-                sell_amt += clear_sell_amt
-                orders.append(Order(
-                    product, fair_ask, -clear_sell_amt))
-                print(f"[CLEAR OFFER] {clear_sell_amt} @ {fair_ask}")
+            better_asks = [
+                price for price in order_depth[product].buy_orders
+                if price >= fair_ask + clear_width
+            ]
+            if better_asks:
+                best_ask = max(better_asks)
+                clear_sell_amt = min(
+                    order_depth[product].buy_orders[best_ask],
+                    pos_after_take,
+                    pos_lim + (pos - sell_amt)
+                )
+                if clear_sell_amt > 0:
+                    sell_amt += clear_sell_amt
+                    orders.append(Order(
+                        product, best_ask, -clear_sell_amt))
+                    print(f"[CLEAR OFFER] {clear_sell_amt}\
+                          {product} @ {best_ask}")
 
-        elif pos_after_take < 0 and\
-                fair_bid in order_depth[product].sell_orders:
+        elif pos_after_take < 0:
             # want to buy
-            clear_buy_amt = min(
-                abs(order_depth[product].sell_orders[fair_bid]),
-                -pos_after_take,
-                pos_lim - (pos + buy_amt)
-            )
-            if clear_buy_amt > 0:
-                buy_amt += clear_buy_amt
-                orders.append(
-                    Order(product, fair_bid, clear_buy_amt))
-                print(f"[CLEAR BID] {clear_buy_amt} @ {fair_bid}")
+            better_bids = [
+                price for price in order_depth[product].sell_orders
+                if price <= fair_bid + clear_width
+            ]
+            if better_bids:
+                best_bid = min(better_bids)
+                clear_buy_amt = min(
+                    abs(order_depth[product].sell_orders[best_bid]),
+                    -pos_after_take,
+                    pos_lim - (pos + buy_amt)
+                )
+                if clear_buy_amt > 0:
+                    buy_amt += clear_buy_amt
+                    orders.append(
+                        Order(product, best_bid, clear_buy_amt))
+                    print(f"[CLEAR BID] {clear_buy_amt}\
+                          {product} @ {best_bid}")
 
         # === MAKE ===
         asks_above_fair_value = [
@@ -293,10 +308,10 @@ class Trader:
             if asks_above_fair_value\
             else math.ceil(fair_value + make_sell_width)
         make_sell_amt = pos_lim + (pos - sell_amt)
-        print(f"Make sell amount: {make_sell_amt}")
+        # print(f"Make sell amount: {make_sell_amt}")
         if make_sell_amt > 0:
             orders.append(Order(product, baaf - 1, -make_sell_amt))
-            print(f"[MAKE OFFER] {make_sell_amt} @ {baaf - 1}")
+            print(f"[MAKE OFFER] {make_sell_amt} {product} @ {baaf - 1}")
 
         bids_below_fair_value = [
             price for price in order_depth[product].buy_orders
@@ -308,7 +323,7 @@ class Trader:
         make_buy_amt = pos_lim - (pos + buy_amt)
         if make_buy_amt > 0:
             orders.append(Order(product, bbbf + 1, make_buy_amt))
-            print(f"[MAKE BID] {make_buy_amt} @ {bbbf + 1}")
+            print(f"[MAKE BID] {make_buy_amt} {product} @ {bbbf + 1}")
 
         return orders
 
@@ -335,7 +350,7 @@ class Trader:
         take_sell_width = self.PRODUCT_HYPERPARAMS["RAINFOREST_RESIN"].get(
             "take_sell_width", 1)
 
-        print(f"Current position: {pos}")
+        # print(f"Current position: {pos}")
 
         # === TAKE ===
         sell_amt = 0
@@ -354,12 +369,13 @@ class Trader:
                 )
                 if take_sell_amt_per > 0:
                     sell_amt += take_sell_amt_per
-                    order_depth["RAINFOREST_RESIN"].buy_orders[bid] -= take_sell_amt_per
+                    order_depth["RAINFOREST_RESIN"].buy_orders[bid]\
+                        -= take_sell_amt_per
                     if order_depth["RAINFOREST_RESIN"].buy_orders[bid] == 0:
                         del order_depth["RAINFOREST_RESIN"].buy_orders[bid]
                     orders.append(Order(
                         "RAINFOREST_RESIN", round(bid), -take_sell_amt_per))
-                print(f"[TAKE OFFER] {take_sell_amt} @ {bid}")
+                print(f"[TAKE OFFER] {take_sell_amt} RAINFORES_RESIN @ {bid}")
 
         if order_depth["RAINFOREST_RESIN"].sell_orders:
             asks_above_fair_value = [
@@ -374,15 +390,16 @@ class Trader:
                 )
                 if take_buy_amt_per > 0:
                     buy_amt += take_buy_amt_per
-                    order_depth["RAINFOREST_RESIN"].sell_orders[ask] += take_buy_amt_per
+                    order_depth["RAINFOREST_RESIN"].sell_orders[ask]\
+                        += take_buy_amt_per
                     if order_depth["RAINFOREST_RESIN"].sell_orders[ask] == 0:
                         del order_depth["RAINFOREST_RESIN"].sell_orders[ask]
                     orders.append(Order(
                         "RAINFOREST_RESIN", round(ask), take_buy_amt_per))
-                print(f"[TAKE BID] {take_buy_amt} @ {ask}")
+                print(f"[TAKE BID] {take_buy_amt} RAINFOREST_RESIN @ {ask}")
 
         pos_after_take = pos + buy_amt - sell_amt
-        print(f"Position after take: {pos_after_take}")
+        # print(f"Position after take: {pos_after_take}")
 
         # === CLEAR ===
         clear_buy_amt = 0
@@ -400,7 +417,8 @@ class Trader:
                 sell_amt += clear_sell_amt
                 orders.append(Order(
                     "RAINFOREST_RESIN", fair_value, -clear_sell_amt))
-                print(f"[CLEAR OFFER] {clear_sell_amt} @ {fair_value}")
+                print(f"[CLEAR OFFER] {clear_sell_amt}\
+                      RAINFORES_RESIN @ {fair_value}")
 
         elif pos_after_take < 0 and\
                 fair_value in order_depth["RAINFOREST_RESIN"].sell_orders:
@@ -414,7 +432,8 @@ class Trader:
                 buy_amt += clear_buy_amt
                 orders.append(
                     Order("RAINFOREST_RESIN", fair_value, clear_buy_amt))
-                print(f"[CLEAR BID] {clear_buy_amt} @ {fair_value}")
+                print(f"[CLEAR BID] {clear_buy_amt}\
+                      RAINFORES_RESIN @ {fair_value}")
 
         # === MAKE ===
         asks_above_fair_value = [
@@ -424,10 +443,10 @@ class Trader:
         baaf = min(asks_above_fair_value)\
             if asks_above_fair_value else fair_value + 1
         make_sell_amt = pos_lim + (pos - sell_amt)
-        print(f"Make sell amount: {make_sell_amt}")
+        # print(f"Make sell amount: {make_sell_amt}")
         if make_sell_amt > 0:
             orders.append(Order("RAINFOREST_RESIN", baaf - 1, -make_sell_amt))
-            print(f"[MAKE OFFER] {make_sell_amt} @ {baaf - 1}")
+            print(f"[MAKE OFFER] {make_sell_amt} RAINFORES_RESIN @ {baaf - 1}")
 
         bids_below_fair_value = [
             price for price in order_depth["RAINFOREST_RESIN"].buy_orders
@@ -438,7 +457,7 @@ class Trader:
         make_buy_amt = pos_lim - (pos + buy_amt)
         if make_buy_amt > 0:
             orders.append(Order("RAINFOREST_RESIN", bbbf + 1, make_buy_amt))
-            print(f"[MAKE BID] {make_buy_amt} @ {bbbf + 1}")
+            print(f"[MAKE BID] {make_buy_amt} RAINFORES_RESIN @ {bbbf + 1}")
 
         return orders
 
@@ -507,7 +526,7 @@ class Trader:
                         del order_depth["KELP"].buy_orders[bid]
                     orders.append(Order(
                         "KELP", round(bid), -take_sell_amt_per))
-                print(f"[TAKE OFFER] {take_sell_amt} @ {bid}")
+                print(f"[TAKE OFFER] {take_sell_amt} KELP @ {bid}")
 
         if order_depth["KELP"].sell_orders:
             asks_above_fair_value = [
@@ -527,10 +546,10 @@ class Trader:
                         del order_depth["KELP"].sell_orders[ask]
                     orders.append(Order(
                         "KELP", round(ask), take_buy_amt_per))
-                print(f"[TAKE BID] {take_buy_amt} @ {ask}")
+                print(f"[TAKE BID] {take_buy_amt} KELP @ {ask}")
 
         pos_after_take = pos + buy_amt - sell_amt
-        print(f"Position after take: {pos_after_take}")
+        # print(f"Position after take: {pos_after_take}")
 
         # === CLEAR ===
         clear_buy_amt = 0
@@ -550,7 +569,7 @@ class Trader:
                 sell_amt += clear_sell_amt
                 orders.append(Order(
                     "KELP", fair_ask, -clear_sell_amt))
-                print(f"[CLEAR OFFER] {clear_sell_amt} @ {fair_ask}")
+                print(f"[CLEAR OFFER] {clear_sell_amt} KELP @ {fair_ask}")
 
         elif pos_after_take < 0 and\
                 fair_bid in order_depth["KELP"].sell_orders:
@@ -564,7 +583,7 @@ class Trader:
                 buy_amt += clear_buy_amt
                 orders.append(
                     Order("KELP", fair_bid, clear_buy_amt))
-                print(f"[CLEAR BID] {clear_buy_amt} @ {fair_bid}")
+                print(f"[CLEAR BID] {clear_buy_amt} KELP @ {fair_bid}")
 
         # === MAKE ===
         asks_above_fair_value = [
@@ -575,10 +594,10 @@ class Trader:
             if asks_above_fair_value\
             else math.ceil(fair_value + make_sell_width)
         make_sell_amt = pos_lim + (pos - sell_amt)
-        print(f"Make sell amount: {make_sell_amt}")
+        # print(f"Make sell amount: {make_sell_amt}")
         if make_sell_amt > 0:
             orders.append(Order("KELP", baaf - 1, -make_sell_amt))
-            print(f"[MAKE OFFER] {make_sell_amt} @ {baaf - 1}")
+            print(f"[MAKE OFFER] {make_sell_amt} KELP @ {baaf - 1}")
 
         bids_below_fair_value = [
             price for price in order_depth["KELP"].buy_orders
@@ -590,7 +609,7 @@ class Trader:
         make_buy_amt = pos_lim - (pos + buy_amt)
         if make_buy_amt > 0:
             orders.append(Order("KELP", bbbf + 1, make_buy_amt))
-            print(f"[MAKE BID] {make_buy_amt} @ {bbbf + 1}")
+            print(f"[MAKE BID] {make_buy_amt} KELP @ {bbbf + 1}")
 
         return orders, historical
 
@@ -653,12 +672,13 @@ class Trader:
                 )
                 if take_sell_amt_per > 0:
                     sell_amt += take_sell_amt_per
-                    order_depth["SQUID_INK"].buy_orders[bid] -= take_sell_amt_per
+                    order_depth["SQUID_INK"].buy_orders[bid]\
+                        -= take_sell_amt_per
                     if order_depth["SQUID_INK"].buy_orders[bid] == 0:
                         del order_depth["SQUID_INK"].buy_orders[bid]
                     orders.append(Order(
                         "SQUID_INK", round(bid), -take_sell_amt_per))
-                print(f"[TAKE OFFER] {take_sell_amt} @ {bid}")
+                print(f"[TAKE OFFER] {take_sell_amt} SQUID_INK @ {bid}")
 
         if order_depth["SQUID_INK"].sell_orders:
             asks_above_fair_value = [
@@ -673,15 +693,16 @@ class Trader:
                 )
                 if take_buy_amt_per > 0:
                     buy_amt += take_buy_amt_per
-                    order_depth["SQUID_INK"].sell_orders[ask] += take_buy_amt_per
+                    order_depth["SQUID_INK"].sell_orders[ask]\
+                        += take_buy_amt_per
                     if order_depth["SQUID_INK"].sell_orders[ask] == 0:
                         del order_depth["SQUID_INK"].sell_orders[ask]
                     orders.append(Order(
                         "SQUID_INK", round(ask), take_buy_amt_per))
-                print(f"[TAKE BID] {take_buy_amt} @ {ask}")
+                print(f"[TAKE BID] {take_buy_amt} SQUID_INK @ {ask}")
 
         pos_after_take = pos + buy_amt - sell_amt
-        print(f"Position after take: {pos_after_take}")
+        # print(f"Position after take: {pos_after_take}")
 
         # === CLEAR ===
         clear_buy_amt = 0
@@ -701,7 +722,7 @@ class Trader:
                 sell_amt += clear_sell_amt
                 orders.append(Order(
                     "SQUID_INK", fair_ask, -clear_sell_amt))
-                print(f"[CLEAR OFFER] {clear_sell_amt} @ {fair_ask}")
+                print(f"[CLEAR OFFER] {clear_sell_amt} SQUID_INK @ {fair_ask}")
 
         elif pos_after_take < 0 and\
                 fair_bid in order_depth["SQUID_INK"].sell_orders:
@@ -715,7 +736,7 @@ class Trader:
                 buy_amt += clear_buy_amt
                 orders.append(
                     Order("SQUID_INK", fair_bid, clear_buy_amt))
-                print(f"[CLEAR BID] {clear_buy_amt} @ {fair_bid}")
+                print(f"[CLEAR BID] {clear_buy_amt} SQUID_INK @ {fair_bid}")
 
         # === MAKE ===
         asks_above_fair_value = [
@@ -726,11 +747,11 @@ class Trader:
             if asks_above_fair_value\
             else math.ceil(fair_value + make_sell_width)
         make_sell_amt = pos_lim + (pos - sell_amt)
-        print(f"Make sell amount: {make_sell_amt}")
+        # print(f"Make sell amount: {make_sell_amt}")
         if make_sell_amt > 0:
             orders.append(Order(
                 "SQUID_INK", baaf - 1, -make_sell_amt))
-            print(f"[MAKE OFFER] {make_sell_amt} @ {baaf - 1}")
+            print(f"[MAKE OFFER] {make_sell_amt} SQUID_INK @ {baaf - 1}")
 
         bids_below_fair_value = [
             price for price in order_depth["SQUID_INK"].buy_orders
@@ -743,7 +764,7 @@ class Trader:
         if make_buy_amt > 0:
             orders.append(Order(
                 "SQUID_INK", bbbf + 1, make_buy_amt))
-            print(f"[MAKE BID] {make_buy_amt} @ {bbbf + 1}")
+            print(f"[MAKE BID] {make_buy_amt} SQUID_INK @ {bbbf + 1}")
 
         return orders, historical
 
@@ -776,7 +797,7 @@ class Trader:
         DJEMBES = self.mid_price("DJEMBES", order_depth)
         fair_value = 6 * CROISSANTS + 3 * JAMS + DJEMBES + premium
 
-        print(f"Fair value: {fair_value}")
+        # print(f"Fair value: {fair_value}")
 
         # === TAKE ===
         if order_depth["PICNIC_BASKET1"].buy_orders:
@@ -797,7 +818,7 @@ class Trader:
                         del order_depth["PICNIC_BASKET1"].buy_orders[bid]
                     orders.append(Order(
                         "PICNIC_BASKET1", round(bid), -take_sell_amt))
-                    print(f"[TAKE OFFER] {take_sell_amt} @ {bid}")
+                    print(f"[TAKE OFFER] {take_sell_amt} PIC 1 @ {bid}")
 
         if order_depth["PICNIC_BASKET1"].sell_orders:
             best_asks_above_fair_value = [
@@ -818,10 +839,10 @@ class Trader:
                             del order_depth["PICNIC_BASKET1"].sell_orders[ask]
                         orders.append(Order(
                             "PICNIC_BASKET1", round(ask), take_buy_amt))
-                        print(f"[TAKE BID] {take_buy_amt} @ {ask}")
+                        print(f"[TAKE BID] {take_buy_amt} PIC 1 @ {ask}")
 
-        pos_after_take = pos + p1_buy_amt - p1_sell_amt
-        print(f"Position after take: {pos_after_take}")
+        # pos_after_take = pos + p1_buy_amt - p1_sell_amt
+        # print(f"Position after take: {pos_after_take}")
 
         return orders
 
@@ -845,10 +866,6 @@ class Trader:
             "take_buy_width", 1)
         take_sell_width = self.PRODUCT_HYPERPARAMS["PICNIC_BASKET2"].get(
             "take_sell_width", 1)
-        make_buy_width = self.PRODUCT_HYPERPARAMS["PICNIC_BASKET2"].get(
-            "make_buy_width", 1)
-        make_sell_width = self.PRODUCT_HYPERPARAMS["PICNIC_BASKET2"].get(
-            "make_sell_width", 1)
         premium = self.PRODUCT_HYPERPARAMS["PICNIC_BASKET2"].get(
             "premium", 0)
 
@@ -876,7 +893,7 @@ class Trader:
                         del order_depth["PICNIC_BASKET2"].buy_orders[bid]
                     orders.append(Order(
                         "PICNIC_BASKET2", round(bid), -take_sell_amt))
-                    print(f"[TAKE OFFER] {take_sell_amt} @ {bid}")
+                    print(f"[TAKE OFFER] {take_sell_amt} PIC 2 @ {bid}")
 
         if order_depth["PICNIC_BASKET2"].sell_orders:
             best_asks_above_fair_value = [
@@ -897,10 +914,10 @@ class Trader:
                             del order_depth["PICNIC_BASKET2"].sell_orders[ask]
                         orders.append(Order(
                             "PICNIC_BASKET2", round(ask), take_buy_amt))
-                        print(f"[TAKE BID] {take_buy_amt} @ {ask}")
+                        print(f"[TAKE BID] {take_buy_amt} PIC 2 @ {ask}")
 
         pos_after_take = pos + p2_buy_amt - p2_sell_amt
-        print(f"Position after take: {pos_after_take}")
+        # print(f"Position after take: {pos_after_take}")
 
         return orders
 
@@ -927,10 +944,10 @@ class Trader:
             "arb_strat_width", 1)
 
         d_mid = self.mid_price("DJEMBES", order_depth)
-        print(f"DJEMBES mid price: {d_mid}")
+        # print(f"DJEMBES mid price: {d_mid}")
         tp1m3p2_fair_value = 2 * d_mid - 502
-        print(f"TP1M3P2 fair value: {tp1m3p2_fair_value}")
-        print(f"Current position: {p1_pos} {p2_pos}")
+        # print(f"TP1M3P2 fair value: {tp1m3p2_fair_value}")
+        # print(f"Current position: {p1_pos} {p2_pos}")
 
         p1_buy_amt = 0
         p1_sell_amt = 0
@@ -943,7 +960,7 @@ class Trader:
             best_p1_bid = max(order_depth["PICNIC_BASKET1"].buy_orders.keys())
             best_p2_ask = min(order_depth["PICNIC_BASKET2"].sell_orders.keys())
             best_synthetic_bid = 2 * best_p1_bid - 3 * best_p2_ask
-            print(f"Best synthetic bid: {best_synthetic_bid}")
+            # print(f"Best synthetic bid: {best_synthetic_bid}")
             if best_synthetic_bid > tp1m3p2_fair_value + fair_width:
                 take_sell_amt = min(
                     order_depth["PICNIC_BASKET1"].buy_orders[best_p1_bid] // 2,
@@ -953,7 +970,7 @@ class Trader:
                     (p1_pos_lim + p1_pos) // 2,
                     (p2_pos_lim - p2_pos) // 3
                 )
-                print(f"Take sell amount: {take_sell_amt}")
+                # print(f"Take sell amount: {take_sell_amt}")
                 if take_sell_amt > 0:
                     orders.extend([
                         Order("PICNIC_BASKET1",
@@ -966,14 +983,15 @@ class Trader:
                     p1_sell_amt += take_sell_amt * 2
                     p2_buy_amt += take_sell_amt * 3
                     print(
-                        f"[TAKE OFFER] {take_sell_amt} @ {best_synthetic_bid}")
+                        f"[TAKE OFFER] {take_sell_amt}\
+                            SYNTH @ {best_synthetic_bid}")
 
         if order_depth["PICNIC_BASKET1"].sell_orders\
                 and order_depth["PICNIC_BASKET2"].buy_orders:
             best_p1_ask = min(order_depth["PICNIC_BASKET1"].sell_orders.keys())
             best_p2_bid = max(order_depth["PICNIC_BASKET2"].buy_orders.keys())
             best_synthetic_ask = 2 * best_p1_ask - 3 * best_p2_bid
-            print(f"Best synthetic ask: {best_synthetic_ask}")
+            # print(f"Best synthetic ask: {best_synthetic_ask}")
             if best_synthetic_ask < tp1m3p2_fair_value - fair_width:
                 take_buy_amt = min(
                     abs(
@@ -983,7 +1001,7 @@ class Trader:
                     (p1_pos_lim - p1_pos_after_take) // 2,
                     (p2_pos_lim + p2_pos_after_take) // 3
                 )
-                print(f"Take buy amount: {take_buy_amt}")
+                # print(f"Take buy amount: {take_buy_amt}")
                 if take_buy_amt > 0:
                     orders.extend([
                         Order("PICNIC_BASKET1",
@@ -1165,8 +1183,8 @@ class Trader:
             fair_value = data["fair_value"] +\
                 self.PRODUCT_HYPERPARAMS[product].get("premium", 0)
 
-            print(f"Fair value of {product}: {fair_value}")
-            print(f"Mid price of {product}: {self.mid_price(product, order_depth)}")
+            # print(f"Fair value of {product}: {fair_value}")
+            # print(f"Mid price of {product}: {self.mid_price(product, order_depth)}")
 
             # === TAKE ===
             sell_amt = 0
@@ -1212,7 +1230,7 @@ class Trader:
 
             pos_after_take = pos + buy_amt - sell_amt
 
-            # # === CLEAR ===
+            # === CLEAR ===
             clear_buy_amt = 0
             clear_sell_amt = 0
             fair_ask = math.ceil(fair_value)
