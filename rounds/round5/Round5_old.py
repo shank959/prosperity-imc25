@@ -94,56 +94,51 @@ class Trader:
 
     def rfr_orders(self, orderDep: OrderDepth, fairVal: int, width: int, position: int, positionLimit: int) -> List[Order]:
         orders: List[Order] = []
-
         buyVolume = 0
         sellVolume = 0
 
-
         asks = [p for p in orderDep.sell_orders if p > fairVal + 1]
-        if asks:
-            baaf = min(asks)
-        else:
-            baaf = fairVal + 1
+        baaf = min(asks) if asks else fairVal + 1
 
-        bids = [p for p in orderDep.buy_orders if p < fairVal -1]
-        if bids:
-            bbbf = max(bids)
-        else:
-            bbbf = fairVal - 1
+        bids = [p for p in orderDep.buy_orders if p < fairVal - 1]
+        bbbf = max(bids) if bids else fairVal - 1
 
-        
-        if len(orderDep.sell_orders) != 0:
+        if orderDep.sell_orders:
             bestAsk = min(orderDep.sell_orders.keys())
-            best_ask_amount = -1*orderDep.sell_orders[bestAsk]
+            best_ask_amount = -orderDep.sell_orders[bestAsk]
             if bestAsk < fairVal:
-                quantity = min(best_ask_amount, positionLimit -
-                               position)  # max amt to buy
+                quantity = min(best_ask_amount, positionLimit - position)
                 if quantity > 0:
                     orders.append(Order("RAINFOREST_RESIN", round(bestAsk), quantity))
                     buyVolume += quantity
+                    print(f"[TAKE BUY] Bought {quantity} at {bestAsk}")
 
-        if len(orderDep.buy_orders) != 0:
+        if orderDep.buy_orders:
             bestBid = max(orderDep.buy_orders.keys())
             best_bid_amount = orderDep.buy_orders[bestBid]
             if bestBid > fairVal:
-                # should be the max we can sell
                 quantity = min(best_bid_amount, positionLimit + position)
                 if quantity > 0:
-                    orders.append(Order("RAINFOREST_RESIN", round(bestBid), -1 * quantity))
+                    orders.append(Order("RAINFOREST_RESIN", round(bestBid), -quantity))
                     sellVolume += quantity
+                    print(f"[TAKE SELL] Sold {quantity} at {bestBid}")
 
         buyVolume, sellVolume = self.clearPos(
-            orders, orderDep, position, positionLimit, "RAINFOREST_RESIN", buyVolume, sellVolume, fairVal, 1)
+            orders, orderDep, position, positionLimit, "RAINFOREST_RESIN", buyVolume, sellVolume, fairVal, 1
+        )
 
         buyQuant = positionLimit - (position + buyVolume)
         if buyQuant > 0:
             orders.append(Order("RAINFOREST_RESIN", round(bbbf + 1), buyQuant))
+            print(f"[MM BUY] Placed buy for {buyQuant} at {round(bbbf + 1)}")
 
         sellQuant = positionLimit + (position - sellVolume)
         if sellQuant > 0:
             orders.append(Order("RAINFOREST_RESIN", round(baaf - 1), -sellQuant))
+            print(f"[MM SELL] Placed sell for {sellQuant} at {round(baaf - 1)}")
 
         return orders
+
 
     def clearPos(self, orders: List[Order], orderDep: OrderDepth, position: int, positionLimit: int, product: str, buyVolume: int, sellVolume: int, fairVal: float, width: int) -> List[Order]:
         positionAfter = position + buyVolume - sellVolume
@@ -154,22 +149,24 @@ class Trader:
         sellQuant = positionLimit + (position - sellVolume)
 
         if positionAfter > 0:
-            if fairAsk in orderDep.buy_orders.keys():
-                clearQuant = min(
-                    orderDep.buy_orders[fairAsk], positionAfter)
+            if fairAsk in orderDep.buy_orders:
+                clearQuant = min(orderDep.buy_orders[fairAsk], positionAfter)
                 sentQuant = min(sellQuant, clearQuant)
-                orders.append(Order(product, round(fairAsk), -abs(sentQuant)))
-                sellVolume += abs(sentQuant)
+                if sentQuant > 0:
+                    orders.append(Order(product, fairAsk, -abs(sentQuant)))
+                    sellVolume += abs(sentQuant)
+                    print(f"[CLEAR SELL] Sold {sentQuant} at {fairAsk}")
 
         if positionAfter < 0:
-            if fairBid in orderDep.sell_orders.keys():
-                clearQuant = min(
-                    abs(orderDep.sell_orders[fairBid]), abs(positionAfter))
-                # clearQuant = abs(positionAfter)
+            if fairBid in orderDep.sell_orders:
+                clearQuant = min(abs(orderDep.sell_orders[fairBid]), abs(positionAfter))
                 sentQuant = min(buyQuant, clearQuant)
-                orders.append(Order(product, round(fairBid), abs(sentQuant)))
-                buyVolume += abs(sentQuant)
+                if sentQuant > 0:
+                    orders.append(Order(product, fairBid, abs(sentQuant)))
+                    buyVolume += abs(sentQuant)
+                    print(f"[CLEAR BUY] Bought {sentQuant} at {fairBid}")
 
+        print(f"[CLEAR] Position after take: {positionAfter}, BuyVol: {buyVolume}, SellVol: {sellVolume}")
         return buyVolume, sellVolume
 
     # Method: midPrice,
@@ -1059,11 +1056,11 @@ class Trader:
             traderObject = jsonpickle.decode(state.traderData)
             self.MACARONS["sunlight_data"] = traderObject["sunlight_data"]
 
-        if "RAINFOREST_RESIN" in state.order_depths:
-            rfr_position = state.position["RAINFOREST_RESIN"] if "RAINFOREST_RESIN" in state.position else 0
-            rfr_orders = self.rfr_orders(
-                state.order_depths["RAINFOREST_RESIN"], rfr_fair_value, rfr_width, rfr_position, rfr_position_limit)
-            result["RAINFOREST_RESIN"] = rfr_orders
+        # if "RAINFOREST_RESIN" in state.order_depths:
+        #     rfr_position = state.position["RAINFOREST_RESIN"] if "RAINFOREST_RESIN" in state.position else 0
+        #     rfr_orders = self.rfr_orders(
+        #         state.order_depths["RAINFOREST_RESIN"], rfr_fair_value, rfr_width, rfr_position, rfr_position_limit)
+        #     result["RAINFOREST_RESIN"] = rfr_orders
 
         if "KELP" in state.order_depths:
             KELP_position = state.position["KELP"] if "KELP" in state.position else 0
@@ -1072,79 +1069,79 @@ class Trader:
             result["KELP"] = kelpOrders
 
 
-        if state.own_trades.get("MAGNIFICENT_MACARONS", 0):
-            print(f"own_trades: {state.own_trades.get('MAGNIFICENT_MACARONS', 0)}")
+        # if state.own_trades.get("MAGNIFICENT_MACARONS", 0):
+        #     print(f"own_trades: {state.own_trades.get('MAGNIFICENT_MACARONS', 0)}")
 
 
-        if "MAGNIFICENT_MACARONS" in state.order_depths:
-            # check if in panic mode
-            observation = state.observations.conversionObservations["MAGNIFICENT_MACARONS"]
-            sunlight_state = self.macaron_get_sunlight_state(observation)
-            self.MACARONS["sunlight_data"].append(observation.sunlightIndex)
-            if len(self.MACARONS["sunlight_data"]) > 2:
-                self.MACARONS["sunlight_data"].pop(0)
+        # if "MAGNIFICENT_MACARONS" in state.order_depths:
+        #     # check if in panic mode
+        #     observation = state.observations.conversionObservations["MAGNIFICENT_MACARONS"]
+        #     sunlight_state = self.macaron_get_sunlight_state(observation)
+        #     self.MACARONS["sunlight_data"].append(observation.sunlightIndex)
+        #     if len(self.MACARONS["sunlight_data"]) > 2:
+        #         self.MACARONS["sunlight_data"].pop(0)
 
-            # # print all data
-            # print(f"sunlight_index: {state.observations.conversionObservations['MAGNIFICENT_MACARONS'].sunlightIndex}")
-            # print(f"best_bid: {sorted(state.order_depths['MAGNIFICENT_MACARONS'].buy_orders.keys(), reverse=True)}")
-            # print(f"best_ask: {sorted(state.order_depths['MAGNIFICENT_MACARONS'].sell_orders.keys())}")
-            # print(f"midprice: {(sorted(state.order_depths['MAGNIFICENT_MACARONS'].buy_orders.keys(), reverse=True)[0] + sorted(state.order_depths['MAGNIFICENT_MACARONS'].sell_orders.keys())[0]) / 2}")
-            # implied_bid, implied_ask = self.implied_bid_ask_macarons(observation)
-            # print(f"implied_bid: {implied_bid}")
-            # print(f"implied_ask: {implied_ask}")
+        #     # # print all data
+        #     # print(f"sunlight_index: {state.observations.conversionObservations['MAGNIFICENT_MACARONS'].sunlightIndex}")
+        #     # print(f"best_bid: {sorted(state.order_depths['MAGNIFICENT_MACARONS'].buy_orders.keys(), reverse=True)}")
+        #     # print(f"best_ask: {sorted(state.order_depths['MAGNIFICENT_MACARONS'].sell_orders.keys())}")
+        #     # print(f"midprice: {(sorted(state.order_depths['MAGNIFICENT_MACARONS'].buy_orders.keys(), reverse=True)[0] + sorted(state.order_depths['MAGNIFICENT_MACARONS'].sell_orders.keys())[0]) / 2}")
+        #     # implied_bid, implied_ask = self.implied_bid_ask_macarons(observation)
+        #     # print(f"implied_bid: {implied_bid}")
+        #     # print(f"implied_ask: {implied_ask}")
 
 
-            if sunlight_state["is_panic_mode"]:
-                if sunlight_state["roc"] <= 0:
-                    orders = self.deepening_panic_mode(state.order_depths["MAGNIFICENT_MACARONS"], observation, traderObject["macaron_position"])
-                else:
-                    orders = self.lightening_panic_mode(state.order_depths["MAGNIFICENT_MACARONS"], observation, traderObject["macaron_position"])
-                take_orders, macaron_buy_order_volume, macaron_sell_order_volume = self.macarons_take_orders(state.order_depths["MAGNIFICENT_MACARONS"], observation)
-                orders = orders + take_orders
-            else: # if not in panic mode, perform normal band trading, exchange arb and market making
-                # band_orders, buy_order_volume, sell_order_volume = self.macaron_band_orders(state.order_depths["MAGNIFICENT_MACARONS"], traderObject["macaron_position"])
-                take_orders, macaron_buy_order_volume, macaron_sell_order_volume = self.macarons_take_orders(state.order_depths["MAGNIFICENT_MACARONS"], observation)
-                conversions = self.macarons_conversions(macaron_buy_order_volume - macaron_sell_order_volume)
-                orders = take_orders
-            result["MAGNIFICENT_MACARONS"] = orders
-            print(state.position.get("MAGNIFICENT_MACARONS", 0))
-            # buy_order_volume = 0
-            # sell_order_volume = 0
-            # for order in orders:
-            #     if order.quantity > 0:
-            #         buy_order_volume += order.quantity
-            #     else:
-            #         sell_order_volume += order.quantity
+        #     if sunlight_state["is_panic_mode"]:
+        #         if sunlight_state["roc"] <= 0:
+        #             orders = self.deepening_panic_mode(state.order_depths["MAGNIFICENT_MACARONS"], observation, traderObject["macaron_position"])
+        #         else:
+        #             orders = self.lightening_panic_mode(state.order_depths["MAGNIFICENT_MACARONS"], observation, traderObject["macaron_position"])
+        #         take_orders, macaron_buy_order_volume, macaron_sell_order_volume = self.macarons_take_orders(state.order_depths["MAGNIFICENT_MACARONS"], observation)
+        #         orders = orders + take_orders
+        #     else: # if not in panic mode, perform normal band trading, exchange arb and market making
+        #         # band_orders, buy_order_volume, sell_order_volume = self.macaron_band_orders(state.order_depths["MAGNIFICENT_MACARONS"], traderObject["macaron_position"])
+        #         take_orders, macaron_buy_order_volume, macaron_sell_order_volume = self.macarons_take_orders(state.order_depths["MAGNIFICENT_MACARONS"], observation)
+        #         conversions = self.macarons_conversions(macaron_buy_order_volume - macaron_sell_order_volume)
+        #         orders = take_orders
+        #     result["MAGNIFICENT_MACARONS"] = orders
+        #     print(state.position.get("MAGNIFICENT_MACARONS", 0))
+        #     # buy_order_volume = 0
+        #     # sell_order_volume = 0
+        #     # for order in orders:
+        #     #     if order.quantity > 0:
+        #     #         buy_order_volume += order.quantity
+        #     #     else:
+        #     #         sell_order_volume += order.quantity
 
-        # ------------------------ BASKET TRADING ------------------------        
-        if "PICNIC_BASKET1" in state.order_depths:
-            pos1 = state.position.get("PICNIC_BASKET1", 0)
-            result["PICNIC_BASKET1"] = self.trade_basket1(state.order_depths, pos1)
+        # # ------------------------ BASKET TRADING ------------------------        
+        # if "PICNIC_BASKET1" in state.order_depths:
+        #     pos1 = state.position.get("PICNIC_BASKET1", 0)
+        #     result["PICNIC_BASKET1"] = self.trade_basket1(state.order_depths, pos1)
 
-        if "PICNIC_BASKET2" in state.order_depths:
-            pos2 = state.position.get("PICNIC_BASKET2", 0)
-            result["PICNIC_BASKET2"] = self.trade_basket2(state.order_depths, pos2)
-        # ---------------------------------------------------------------
-        # Generate orders
-        if "VOLCANIC_ROCK" in state.order_depths:
-            volc_orders = self.volc_orders(state.order_depths,
-                                           state.position,
-                                           state.timestamp,
-                                           aggression=float("inf"))
+        # if "PICNIC_BASKET2" in state.order_depths:
+        #     pos2 = state.position.get("PICNIC_BASKET2", 0)
+        #     result["PICNIC_BASKET2"] = self.trade_basket2(state.order_depths, pos2)
+        # # ---------------------------------------------------------------
+        # # Generate orders
+        # if "VOLCANIC_ROCK" in state.order_depths:
+        #     volc_orders = self.volc_orders(state.order_depths,
+        #                                    state.position,
+        #                                    state.timestamp,
+        #                                    aggression=float("inf"))
 
-            # TEST FOR 10500 CHEESE
-            if "VOLCANIC_ROCK_VOUCHER_10500" in state.order_depths:
-                if state.order_depths["VOLCANIC_ROCK_VOUCHER_10500"].buy_orders:
-                    best_bid = max(state.order_depths["VOLCANIC_ROCK_VOUCHER_10500"].buy_orders.keys())
-                    if best_bid >= 4:
-                        volc_orders.append(Order("VOLCANIC_ROCK_VOUCHER_10500", best_bid, - 30))
-                if state.order_depths["VOLCANIC_ROCK_VOUCHER_10500"].sell_orders:
-                    best_ask = min(state.order_depths["VOLCANIC_ROCK_VOUCHER_10500"].sell_orders.keys())
-                    if best_ask <= 2:
-                        volc_orders.append(Order("VOLCANIC_ROCK_VOUCHER_10500", best_ask, 30))
+        #     # TEST FOR 10500 CHEESE
+        #     if "VOLCANIC_ROCK_VOUCHER_10500" in state.order_depths:
+        #         if state.order_depths["VOLCANIC_ROCK_VOUCHER_10500"].buy_orders:
+        #             best_bid = max(state.order_depths["VOLCANIC_ROCK_VOUCHER_10500"].buy_orders.keys())
+        #             if best_bid >= 4:
+        #                 volc_orders.append(Order("VOLCANIC_ROCK_VOUCHER_10500", best_bid, - 30))
+        #         if state.order_depths["VOLCANIC_ROCK_VOUCHER_10500"].sell_orders:
+        #             best_ask = min(state.order_depths["VOLCANIC_ROCK_VOUCHER_10500"].sell_orders.keys())
+        #             if best_ask <= 2:
+        #                 volc_orders.append(Order("VOLCANIC_ROCK_VOUCHER_10500", best_ask, 30))
 
-            for order in volc_orders:
-                result.setdefault(order.symbol, []).append(order)
+        #     for order in volc_orders:
+        #         result.setdefault(order.symbol, []).append(order)
 
         traderData = jsonpickle.encode({
             "macaron_position": traderObject["macaron_position"] + (macaron_buy_order_volume - macaron_sell_order_volume) + conversions,
