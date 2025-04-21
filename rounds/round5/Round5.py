@@ -115,11 +115,13 @@ class Trader:
                 "storage_cost": 0.1,
                 "take_buy_width": 1,
                 "take_sell_width": 1,
-                "make_buy_width": 1,
-                "make_sell_width": 1,
-                "critical_sunlight_index": 44.95,
+                "make_width": 2,
+                "critical_sunlight_index": 46,
                 "conversion_limit": 10,
-                "mm_size": 21
+                "mm_size": 21,
+                "size_cap": 30,
+                "expected_holding_period": 10, #! need to determine through analysis
+                "clear_width": 1,
             }
         }
 
@@ -158,6 +160,8 @@ class Trader:
                       if abs(qty) >= mm_size), default=0)
 
         return (mm_bid + mm_ask) / 2 if mm_bid and mm_ask else self.mid_price(product, order_depth)
+    
+
 
     # ============================
     # RAINFOREST_RESIN SECTION
@@ -829,23 +833,24 @@ class Trader:
             self,
             order_depth: OrderDepth,
             observation: Observation,
-            pos: int
+            pos: int,
     ) -> List[Order]:
         """
         """
         orders = []
 
+        macaron_order_depth = order_depth["MAGNIFICENT_MACARONS"]
         pos_lim = self.PRODUCT_HYPERPARAMS["MAGNIFICENT_MACARONS"]["pos_lim"]
         take_buy_width = self.PRODUCT_HYPERPARAMS["MAGNIFICENT_MACARONS"].get(
             "take_buy_width", 1)
         take_sell_width = self.PRODUCT_HYPERPARAMS["MAGNIFICENT_MACARONS"].get(
             "take_sell_width", 1)
-        make_buy_width = self.PRODUCT_HYPERPARAMS["MAGNIFICENT_MACARONS"].get(
-            "make_buy_width", 1)
-        make_sell_width = self.PRODUCT_HYPERPARAMS["MAGNIFICENT_MACARONS"].get(
-            "make_sell_width", 1)
+        make_width = self.PRODUCT_HYPERPARAMS["MAGNIFICENT_MACARONS"].get(
+            "make_width", 2)
         conversion_limit = self.PRODUCT_HYPERPARAMS["MAGNIFICENT_MACARONS"].get(
             "conversion_limit", 10)
+        position_threshold = self.PRODUCT_HYPERPARAMS["MAGNIFICENT_MACARONS"].get(
+            "position_threshold", 20)
         conversion_amt = 0
         
         # DETERMINE CURRENT MODE
@@ -877,39 +882,185 @@ class Trader:
             #     sell_qty = min(order_depth["MAGNIFICENT_MACARONS"].buy_orders[local_best_bid], conversion_limit)
             #     orders.append(Order("MAGNIFICENT_MACARONS", local_best_bid, -sell_qty))
             #     conversion_amt += sell_qty
-            
-            # === MAKE ORDERS ===
-            # Determine fair value
-            fair_value = self.market_maker_mid("MAGNIFICENT_MACARONS", order_depth)
-            make_amt_limit = pos_lim - (pos + (buy_amt - sell_amt))
 
+            # === CALCULATE FAIR VALUE ===
+            fair_value = self.market_maker_mid("MAGNIFICENT_MACARONS", order_depth)
+            # - self.PRODUCT_HYPERPARAMS["MAGNIFICENT_MACARONS"]["storage_cost"] * self.PRODUCT_HYPERPARAMS["MAGNIFICENT_MACARONS"]["expected_holding_period"] #! determine optimal adjustment to account for storage cost
+
+            # === TAKE ===
+            sell_amt = 0
+            buy_amt = 0
+
+            if macaron_order_depth.buy_orders:
+                best_bid = max(macaron_order_depth.buy_orders.keys())
+                if best_bid > fair_value + take_sell_width:
+                    take_sell_amt = min(
+                        macaron_order_depth.buy_orders[best_bid],
+                        pos + pos_lim
+                    )
+                    sell_amt += take_sell_amt
+                    orders.append(Order(
+                        "MAGNIFICENT_MACARONS", round(best_bid), -take_sell_amt))
+                    print(f"[TAKE OFFER] {take_sell_amt} @ {best_bid}")
+
+            if macaron_order_depth.sell_orders:
+                best_ask = min(macaron_order_depth.sell_orders.keys())
+                if best_ask < fair_value - take_buy_width:
+                    take_buy_amt = min(
+                        abs(macaron_order_depth.sell_orders[best_ask]),
+                        pos_lim - pos
+                    )
+                    buy_amt += take_buy_amt
+                    orders.append(Order(
+                        "MAGNIFICENT_MACARONS", round(best_ask), take_buy_amt))
+                    print(f"[TAKE BID] {take_buy_amt} @ {best_ask}")
+
+            pos_after_take = pos + buy_amt - sell_amt
+            print(f"Position after take: {pos_after_take}")
+
+            # === CLEAR ===
+            clear_buy_amt = 0
+            clear_sell_amt = 0
+            clear_width = self.PRODUCT_HYPERPARAMS["MAGNIFICENT_MACARONS"].get(
+                "clear_width", 1)
+            fair_ask = math.ceil(fair_value)
+            fair_bid = math.floor(fair_value)
+
+            if pos_after_take > 0:
+                # want to sell
+                better_asks = [
+                    price for price in order_depth["MAGNIFICENT_MACARONS"].buy_orders
+                    if price >= fair_ask - clear_width
+                ]
+                if better_asks:
+                    best_ask = max(better_asks)
+                    clear_sell_amt = min(
+                        order_depth["MAGNIFICENT_MACARONS"].buy_orders[best_ask],
+                        pos_after_take,
+                        pos_lim + (pos - sell_amt)
+                    )
+                    if clear_sell_amt > 0:
+                        sell_amt += clear_sell_amt
+                        orders.append(Order(
+                            "MAGNIFICENT_MACARONS", best_ask, -clear_sell_amt))
+                        print(f"[CLEAR OFFER]\
+                              {clear_sell_amt} MAGNIFICENT_MACARONS @ {best_ask}")
+
+            elif pos_after_take < 0:
+                # want to buy
+                better_bids = [
+                    price for price in order_depth["MAGNIFICENT_MACARONS"].sell_orders
+                    if price <= fair_bid + clear_width
+                ]
+                if better_bids:
+                    best_bid = min(better_bids)
+                    clear_buy_amt = min(
+                        abs(order_depth["MAGNIFICENT_MACARONS"].sell_orders[best_bid]),
+                        -pos_after_take,
+                        pos_lim - (pos + buy_amt)
+                    )
+                    if clear_buy_amt > 0:
+                        buy_amt += clear_buy_amt
+                        orders.append(
+                            Order("MAGNIFICENT_MACARONS", best_bid, clear_buy_amt))
+                        print(f"[CLEAR BID]\
+                              {clear_buy_amt} MAGNIFICENT_MACARONS @ {best_bid}")
+
+            # === MAKE ===
             asks_above_fair_value = [
-                price for price in order_depth["MAGNIFICENT_MACARONS"].sell_orders
-                if price > fair_value + make_sell_width
+                price for price in macaron_order_depth.sell_orders
+                if price > fair_value + make_width
             ]
             baaf = min(asks_above_fair_value)\
                 if asks_above_fair_value\
-                else math.ceil(fair_value + make_sell_width)
-            print(f"Make sell amount: {make_amt_limit}")
-            if make_amt_limit > 0:
-                orders.append(Order(
-                    "MAGNIFICENT_MACARONS", baaf - 1, -make_amt_limit))
-                print(f"[MAKE OFFER] {make_amt_limit} @ {baaf - 1}")
+                else math.ceil(fair_value + make_width)
 
             bids_below_fair_value = [
-                price for price in order_depth["MAGNIFICENT_MACARONS"].buy_orders
-                if price < fair_value - make_buy_width
+                price for price in macaron_order_depth.buy_orders
+                if price < fair_value - make_width
             ]
             bbbf = max(bids_below_fair_value)\
                 if bids_below_fair_value\
-                else math.floor(fair_value - make_buy_width)
-            if make_amt_limit > 0:
+                else math.floor(fair_value - make_width)
+
+            # if we ever cross our own quotes, back off to a non‐crossing spread
+            best_bid = max(macaron_order_depth.buy_orders.keys(), default=0)
+            best_ask = min(macaron_order_depth.sell_orders.keys(), default=float("inf"))
+            if bbbf + make_width >= baaf - make_width:
+                # either skip quoting or force a minimum spread of 1 tick
+                baaf = math.ceil(best_ask - make_width)
+                bbbf = math.floor(best_bid + make_width)
+
+
+            size_cap = 30 #! play around with this
+            make_sell_amt = pos_lim + (pos - sell_amt)
+            make_buy_amt = pos_lim - (pos + buy_amt)
+            size = min(make_sell_amt, make_buy_amt, size_cap)
+            if make_sell_amt > 0:
                 orders.append(Order(
-                    "MAGNIFICENT_MACARONS", bbbf + 1, make_amt_limit))
-                print(f"[MAKE BID] {make_amt_limit} @ {bbbf + 1}")
+                    "MAGNIFICENT_MACARONS", baaf - make_width, -size))
+
+            if make_buy_amt > 0:
+                orders.append(Order(
+                    "MAGNIFICENT_MACARONS", bbbf + make_width, size))
+
+        return orders
 
 
-        return orders, conversion_amt
+        # # === CLEAR POSITION ===
+        # best_bid = max(order_depth["MAGNIFICENT_MACARONS"].buy_orders.keys(), default=0)
+        # best_ask = min(order_depth["MAGNIFICENT_MACARONS"].sell_orders.keys(), default=float("inf"))
+        # if pos >  position_threshold:
+        #     # too long → sell immediately at best_bid
+        #     qty = abs(min(pos - position_threshold, order_depth["MAGNIFICENT_MACARONS"].buy_orders[best_bid]))
+        #     orders.append(Order("MAGNIFICENT_MACARONS", best_bid, -qty))
+        # elif pos < -position_threshold:
+        #     # too short → buy immediately at best_ask
+        #     qty = abs(min(position_threshold + pos, order_depth["MAGNIFICENT_MACARONS"].sell_orders[best_ask]))
+        #     orders.append(Order("MAGNIFICENT_MACARONS", best_ask,  qty))
+
+            
+        #     # === MAKE ORDERS ===
+        #     # Determine fair value
+        #     fair_value = self.market_maker_mid("MAGNIFICENT_MACARONS", order_depth)
+        #     bids_above_fair_value = [
+        #         price for price in order_depth["MAGNIFICENT_MACARONS"].buy_orders
+        #         if price > fair_value + make_width
+        #     ]
+        #     if bids_above_fair_value:
+        #         bbaf = max(bids_above_fair_value)
+        #     else:
+        #         bbaf = math.floor(fair_value + make_width)
+        #     asks_below_fair_value = [
+        #         price for price in order_depth["MAGNIFICENT_MACARONS"].sell_orders
+        #         if price < fair_value - make_width
+        #     ]
+        #     best_ask = min(order_depth["MAGNIFICENT_MACARONS"].sell_orders, default=float("inf"))
+
+        #     # simple one‐tick spread from NBBO
+        #     make_width = self.PRODUCT_HYPERPARAMS["MAGNIFICENT_MACARONS"].get("make_width", 1)  # e.g. 1 tick
+        #     bid_price = best_bid + make_width
+        #     ask_price = best_ask - make_width
+
+        #     # if we ever cross our own quotes, back off to a non‐crossing spread
+        #     if bid_price >= ask_price:
+        #         # either skip quoting or force a minimum spread of 1 tick
+        #         bid_price = best_bid
+        #         ask_price = best_ask
+
+        #     # size as before
+        #     size = min(pos_lim - pos, int(min(
+        #         order_depth["MAGNIFICENT_MACARONS"].buy_orders[best_bid],
+        #         abs(order_depth["MAGNIFICENT_MACARONS"].sell_orders[best_ask]))))
+
+        #     # post passive quotes
+        #     orders.append(Order("MAGNIFICENT_MACARONS", bid_price,  size))
+        #     orders.append(Order("MAGNIFICENT_MACARONS", ask_price, -size))
+
+
+
+
+        # return orders, conversion_amt
 
 
     # ============================
@@ -967,24 +1118,27 @@ class Trader:
             pos = positions.get("PICNIC_BASKET2", 0)
             pass
 
-        if "VOLCANIC_ROCK" in order_depth:
-            orders = self.VOLCANIC_ROCK_order(
-                order_depth,
-                positions,
-                timestamp
-            )
-            for order in orders:
-                result.setdefault(order.symbol, []).append(order)
+        # if "VOLCANIC_ROCK" in order_depth:
+        #     orders = self.VOLCANIC_ROCK_order(
+        #         order_depth,
+        #         positions,
+        #         timestamp
+        #     )
+        #     for order in orders:
+        #         result.setdefault(order.symbol, []).append(order)
 
         if "MAGNIFICENT_MACARONS" in order_depth:
             pos = positions.get("MAGNIFICENT_MACARONS", 0)
             observation = state.observations.conversionObservations["MAGNIFICENT_MACARONS"]
-            orders, conversions = self.MAGNIFICENT_MACARONS_order(
+            orders = self.MAGNIFICENT_MACARONS_order(
                 order_depth,
                 observation,
                 pos
             )
+            # print(f"sunlight index: {state.observations.conversionObservations['MAGNIFICENT_MACARONS'].sunlightIndex}")
             result["MAGNIFICENT_MACARONS"] = orders
+            # print(f"orders: {result['MAGNIFICENT_MACARONS']}")
+
 
         # === PICKLE TRADER DATA ===
         traderData["kelp_historical"] = kelp_historical
