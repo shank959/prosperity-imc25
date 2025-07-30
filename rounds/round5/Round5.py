@@ -64,16 +64,18 @@ class Trader:
                 "pos_lim": 60,
                 "take_buy_width": 10,
                 "take_sell_width": 10,
-                "make_buy_width": 2,
-                "make_sell_width": 2,
+                "clear_width": 0,
+                "make_buy_width": 15,
+                "make_sell_width": 15,
                 "premium": -152.22,
             },
             "PICNIC_BASKET2": {
                 "pos_lim": 100,
                 "take_buy_width": 16,
                 "take_sell_width": 16,
-                "make_buy_width": 2,
-                "make_sell_width": 2,
+                "clear_width": 0,
+                "make_buy_width": 20,
+                "make_sell_width": 20,
                 "premium": 66.108,
             },
             "VOLCANIC_ROCK": {
@@ -84,10 +86,10 @@ class Trader:
             },
             "VOLCANIC_ROCK_VOUCHER_9500": {
                 "pos_lim": 200,
-                "take_buy_width": 0,
-                "take_buy_width": 0,
-                "make_sell_width": 2,
-                "make_sell_width": 2,
+                "take_buy_width": 4,
+                "take_buy_width": 4,
+                "make_sell_width": 5,
+                "make_sell_width": 5,
                 "clear_width": 1,
                 "upper_threshold": 0.00322,
                 "lower_threshold": -0.01665,
@@ -96,11 +98,11 @@ class Trader:
             },
             "VOLCANIC_ROCK_VOUCHER_9750": {
                 "pos_lim": 200,
-                "take_buy_width": 1.77,
-                "take_sell_width": 1.91,
-                "make_buy_width": 2,
-                "make_sell_width": 2,
-                "clear_width": 1,
+                "take_buy_width": 4,
+                "take_sell_width": 4,
+                "make_buy_width": 7,
+                "make_sell_width": 7,
+                "clear_width": 2,
                 "upper_threshold": 0.03894,
                 "lower_threshold": -0.00803,
                 "critical_boundary": 0.002,
@@ -108,10 +110,10 @@ class Trader:
             },
             "VOLCANIC_ROCK_VOUCHER_10000": {
                 "pos_lim": 200,
-                "take_buy_width": 1,
-                "take_sell_width": 3,
-                "make_buy_width": 1.5,
-                "make_sell_width": 1,
+                "take_buy_width": 2,
+                "take_sell_width": 2.8,
+                "make_buy_width": 3,
+                "make_sell_width": 4,
                 "clear_width": 0,
                 "upper_threshold": 0.00534,
                 "lower_threshold": -0.01640,
@@ -120,10 +122,11 @@ class Trader:
             },
             "VOLCANIC_ROCK_VOUCHER_10250": {
                 "pos_lim": 200,
-                "take_buy_width": 0.55,
-                "take_sell_width": 0.53,
-                "make_buy_width": 2,
-                "make_sell_width": 2,
+                "take_buy_width": 3,
+                "take_sell_width": 3,
+                "clear_width": 2,
+                "make_buy_width": 6,
+                "make_sell_width": 6,
                 "upper_threshold": 0.00502,
                 "lower_threshold": -0.02194,
                 "critical_boundary": 0.002,
@@ -131,8 +134,8 @@ class Trader:
             },
             "VOLCANIC_ROCK_VOUCHER_10500": {
                 "pos_lim": 200,
-                "take_buy_width": 0,
-                "take_sell_width": 0,
+                "take_buy_width": 1,
+                "take_sell_width": 1,
                 "make_buy_width": 2,
                 "make_sell_width": 2,
                 "upper_threshold": float("inf"),
@@ -142,7 +145,18 @@ class Trader:
             },
             "MAGNIFICENT_MACARONS": {
                 "pos_lim": 75,
-            },
+                "storage_cost": 0.1,
+                "take_buy_width": 1,
+                "take_sell_width": 1,
+                "make_width": 1,
+                "arbitrage_width": 0,
+                "critical_sunlight_index": 46,
+                "conversion_limit": 10,
+                "mm_size": 21,
+                "size_cap": 30,
+                "clear_width": 1,
+                "position_threshold": 50,
+            }
         }
 
     # ============================
@@ -788,6 +802,12 @@ class Trader:
             "take_buy_width", 1)
         take_sell_width = self.PRODUCT_HYPERPARAMS["PICNIC_BASKET1"].get(
             "take_sell_width", 1)
+        clear_width = self.PRODUCT_HYPERPARAMS["PICNIC_BASKET1"].get(
+            "clear_width", 1)
+        make_buy_width = self.PRODUCT_HYPERPARAMS["PICNIC_BASKET1"].get(
+            "make_buy_width", 1)
+        make_sell_width = self.PRODUCT_HYPERPARAMS["PICNIC_BASKET1"].get(
+            "make_sell_width", 1)
         premium = self.PRODUCT_HYPERPARAMS["PICNIC_BASKET1"].get(
             "premium", 0)
 
@@ -841,8 +861,87 @@ class Trader:
                             "PICNIC_BASKET1", round(ask), take_buy_amt))
                         print(f"[TAKE BID] {take_buy_amt} PIC 1 @ {ask}")
 
-        # pos_after_take = pos + p1_buy_amt - p1_sell_amt
-        # print(f"Position after take: {pos_after_take}")
+        pos_after_take = pos + p1_buy_amt - p1_sell_amt
+
+        # === CLEAR ===
+        clear_buy_amt = 0
+        clear_sell_amt = 0
+        fair_ask = math.ceil(fair_value)
+        fair_bid = math.floor(fair_value)
+
+        if pos_after_take > 0 and\
+                order_depth["PICNIC_BASKET1"].buy_orders:
+            better_asks = [
+                price for price in order_depth["PICNIC_BASKET1"].buy_orders
+                if price >= fair_ask - clear_width
+            ]
+            if better_asks:
+                best_ask = max(better_asks)
+                clear_sell_amt = min(
+                    order_depth["PICNIC_BASKET1"].buy_orders[best_ask],
+                    pos_after_take,
+                    pos_lim + (pos - p1_sell_amt)
+                )
+                if clear_sell_amt > 0:
+                    p1_sell_amt += clear_sell_amt
+                    order_depth["PICNIC_BASKET1"].buy_orders[best_ask]\
+                        -= clear_sell_amt
+                    if order_depth["PICNIC_BASKET1"].buy_orders[best_ask] == 0:
+                        del order_depth["PICNIC_BASKET1"].buy_orders[best_ask]
+                    orders.append(Order(
+                        "PICNIC_BASKET1", best_ask, -clear_sell_amt))
+                    print(f"[CLEAR OFFER] {clear_sell_amt}\
+                          PIC 1 @ {best_ask}")
+
+        elif pos_after_take < 0 and\
+                order_depth["PICNIC_BASKET1"].sell_orders:
+            better_bids = [
+                price for price in order_depth["PICNIC_BASKET1"].sell_orders
+                if price <= fair_bid + clear_width
+            ]
+            if better_bids:
+                best_bid = min(better_bids)
+                clear_buy_amt = min(
+                    abs(order_depth["PICNIC_BASKET1"].sell_orders[best_bid]),
+                    -pos_after_take,
+                    pos_lim - (pos + p1_buy_amt)
+                )
+                if clear_buy_amt > 0:
+                    p1_buy_amt += clear_buy_amt
+                    orders.append(
+                        Order("PICNIC_BASKET1", best_bid, clear_buy_amt))
+                    order_depth["PICNIC_BASKET1"].sell_orders[best_bid]\
+                        += clear_buy_amt
+                    if order_depth["PICNIC_BASKET1"].sell_orders[best_bid] == 0:
+                        del order_depth["PICNIC_BASKET1"].sell_orders[best_bid]
+                    print(f"[CLEAR BID] {clear_buy_amt}\
+                          PIC 1 @ {best_bid}")
+
+        # === MAKE ===
+        asks_above_fair_value = [
+            price for price in order_depth["PICNIC_BASKET1"].sell_orders
+            if price > fair_value + make_sell_width
+        ]
+        baaf = min(asks_above_fair_value)\
+            if asks_above_fair_value\
+            else math.ceil(fair_value + make_sell_width)
+        make_sell_amt = min(pos_lim + (pos - p1_sell_amt), 10)
+        # print(f"Make sell amount: {make_sell_amt}")
+        if make_sell_amt > 0:
+            orders.append(Order("PICNIC_BASKET1", baaf - 1, -make_sell_amt))
+            print(f"[MAKE OFFER] {make_sell_amt} PIC 1 @ {baaf - 1}")
+
+        bids_below_fair_value = [
+            price for price in order_depth["PICNIC_BASKET1"].buy_orders
+            if price < fair_value - make_buy_width
+        ]
+        bbbf = max(bids_below_fair_value)\
+            if bids_below_fair_value\
+            else math.floor(fair_value - make_buy_width)
+        make_buy_amt = min(pos_lim - (pos + p1_buy_amt), 10)
+        if make_buy_amt > 0:
+            orders.append(Order("PICNIC_BASKET1", bbbf + 1, make_buy_amt))
+            print(f"[MAKE BID] {make_buy_amt} PIC 1 @ {bbbf + 1}")
 
         return orders
 
@@ -866,6 +965,12 @@ class Trader:
             "take_buy_width", 1)
         take_sell_width = self.PRODUCT_HYPERPARAMS["PICNIC_BASKET2"].get(
             "take_sell_width", 1)
+        clear_width = self.PRODUCT_HYPERPARAMS["PICNIC_BASKET2"].get(
+            "clear_width", 1)
+        make_buy_width = self.PRODUCT_HYPERPARAMS["PICNIC_BASKET2"].get(
+            "make_buy_width", 1)
+        make_sell_width = self.PRODUCT_HYPERPARAMS["PICNIC_BASKET2"].get(
+            "make_sell_width", 1)
         premium = self.PRODUCT_HYPERPARAMS["PICNIC_BASKET2"].get(
             "premium", 0)
 
@@ -883,7 +988,9 @@ class Trader:
             for bid in best_bids_above_fair_value:
                 take_sell_amt = min(
                     order_depth["PICNIC_BASKET2"].buy_orders[bid],
-                    pos + pos_lim - p2_sell_amt
+                    round((pos + pos_lim - p2_sell_amt) * 0.6) if
+                    round((pos + pos_lim - p2_sell_amt) * 0.6) > 5
+                    else 0
                 )
                 if take_sell_amt > 0:
                     p2_sell_amt += take_sell_amt
@@ -904,7 +1011,9 @@ class Trader:
                 if ask < fair_value - take_buy_width:
                     take_buy_amt = min(
                         abs(order_depth["PICNIC_BASKET2"].sell_orders[ask]),
-                        pos_lim - pos - p2_buy_amt
+                        round((pos_lim - pos - p2_buy_amt) * 0.6)
+                        if round((pos_lim - pos - p2_buy_amt) * 0.6) > 5
+                        else 0
                     )
                     if take_buy_amt > 0:
                         p2_buy_amt += take_buy_amt
@@ -917,6 +1026,86 @@ class Trader:
                         print(f"[TAKE BID] {take_buy_amt} PIC 2 @ {ask}")
 
         pos_after_take = pos + p2_buy_amt - p2_sell_amt
+
+        # === CLEAR ===
+        clear_buy_amt = 0
+        clear_sell_amt = 0
+        fair_ask = math.ceil(fair_value)
+        fair_bid = math.floor(fair_value)
+
+        if pos_after_take > 0 and\
+                order_depth["PICNIC_BASKET2"].buy_orders:
+            better_asks = [
+                price for price in order_depth["PICNIC_BASKET2"].buy_orders
+                if price >= fair_ask - clear_width
+            ]
+            if better_asks:
+                best_ask = max(better_asks)
+                clear_sell_amt = min(
+                    order_depth["PICNIC_BASKET2"].buy_orders[best_ask],
+                    pos_after_take,
+                    pos_lim + (pos - p2_sell_amt)
+                )
+                if clear_sell_amt > 0:
+                    p2_sell_amt += clear_sell_amt
+                    orders.append(Order(
+                        "PICNIC_BASKET2", best_ask, -clear_sell_amt))
+                    order_depth["PICNIC_BASKET2"].buy_orders[best_ask]\
+                        -= clear_sell_amt
+                    if order_depth["PICNIC_BASKET2"].buy_orders[best_ask] == 0:
+                        del order_depth["PICNIC_BASKET2"].buy_orders[best_ask]
+                    print(f"[CLEAR OFFER] {clear_sell_amt}\
+                          PIC 2 @ {best_ask}")
+
+        elif pos_after_take < 0 and\
+                order_depth["PICNIC_BASKET2"].sell_orders:
+            better_bids = [
+                price for price in order_depth["PICNIC_BASKET2"].sell_orders
+                if price <= fair_bid + clear_width
+            ]
+            if better_bids:
+                best_bid = min(better_bids)
+                clear_buy_amt = min(
+                    abs(order_depth["PICNIC_BASKET2"].sell_orders[best_bid]),
+                    -pos_after_take,
+                    pos_lim - (pos + p2_buy_amt)
+                )
+                if clear_buy_amt > 0:
+                    p2_buy_amt += clear_buy_amt
+                    orders.append(
+                        Order("PICNIC_BASKET2", best_bid, clear_buy_amt))
+                    order_depth["PICNIC_BASKET2"].sell_orders[best_bid]\
+                        += clear_buy_amt
+                    if order_depth["PICNIC_BASKET2"].sell_orders[best_bid] == 0:
+                        del order_depth["PICNIC_BASKET2"].sell_orders[best_bid]
+                    print(f"[CLEAR BID] {clear_buy_amt}\
+                          PIC 2 @ {best_bid}")
+
+        # === MAKE ===
+        asks_above_fair_value = [
+            price for price in order_depth["PICNIC_BASKET2"].sell_orders
+            if price > fair_value + make_sell_width
+        ]
+        baaf = min(asks_above_fair_value)\
+            if asks_above_fair_value\
+            else math.ceil(fair_value + make_sell_width)
+        make_sell_amt = round((pos_lim + (pos - p2_sell_amt)) * 0.5)
+        # print(f"Make sell amount: {make_sell_amt}")
+        if make_sell_amt > 0:
+            orders.append(Order("PICNIC_BASKET2", baaf - 1, -make_sell_amt))
+            print(f"[MAKE OFFER] {make_sell_amt} PIC 2 @ {baaf - 1}")
+
+        bids_below_fair_value = [
+            price for price in order_depth["PICNIC_BASKET2"].buy_orders
+            if price < fair_value - make_buy_width
+        ]
+        bbbf = max(bids_below_fair_value)\
+            if bids_below_fair_value\
+            else math.floor(fair_value - make_buy_width)
+        make_buy_amt = round((pos_lim - (pos + p2_buy_amt)) * 0.5)
+        if make_buy_amt > 0:
+            orders.append(Order("PICNIC_BASKET2", bbbf + 1, make_buy_amt))
+            print(f"[MAKE BID] {make_buy_amt} PIC 2 @ {bbbf + 1}")
         # print(f"Position after take: {pos_after_take}")
 
         return orders
@@ -1165,10 +1354,11 @@ class Trader:
             self.PRODUCT_HYPERPARAMS["VOLCANIC_ROCK_VOUCHER_10000"]["pos_lim"]
         orders = []
 
-        for product, data in [
-            ["VOLCANIC_ROCK_VOUCHER_10000",
-             info["VOLCANIC_ROCK_VOUCHER_10000"]]
-        ]:
+        # for product, data in [
+        #     ["VOLCANIC_ROCK_VOUCHER_10000",
+        #      info["VOLCANIC_ROCK_VOUCHER_10000"]]
+        # ]:
+        for product, data in info.items():
             pos = positions.get(product, 0)
             take_buy_width = self.PRODUCT_HYPERPARAMS[product].get(
                 "take_buy_width", 1)
@@ -1276,35 +1466,291 @@ class Trader:
                         print(f"[CLEAR BID]\
                               {clear_buy_amt} {product} @ {best_bid}")
 
-            # # === MAKE ===
-            # asks_above_fair_value = [
-            #     price for price in order_depth[product].sell_orders
-            #     if price > fair_value + make_sell_width
-            # ]
-            # baaf = min(asks_above_fair_value)\
-            #     if asks_above_fair_value\
-            #     else math.ceil(fair_value + make_sell_width)
-            # make_sell_amt = min(pos_lim + (pos - sell_amt), 20)
-            # print(f"Make sell amount: {make_sell_amt}")
-            # if make_sell_amt > 0:
-            #     orders.append(Order(
-            #         product, baaf - 1, -make_sell_amt))
-            #     print(f"[MAKE OFFER] {make_sell_amt} {product} @ {baaf - 1}")
+            # === MAKE ===
+            asks_above_fair_value = [
+                price for price in order_depth[product].sell_orders
+                if price > fair_value + make_sell_width
+            ]
+            baaf = min(asks_above_fair_value)\
+                if asks_above_fair_value\
+                else math.ceil(fair_value + make_sell_width)
+            make_sell_amt = min(pos_lim + (pos - sell_amt), 20)
+            print(f"Make sell amount: {make_sell_amt}")
+            if make_sell_amt > 0:
+                orders.append(Order(
+                    product, baaf - 1, -make_sell_amt))
+                print(f"[MAKE OFFER] {make_sell_amt} {product} @ {baaf - 1}")
 
-            # bids_below_fair_value = [
-            #     price for price in order_depth[product].buy_orders
-            #     if price < fair_value - make_buy_width
-            # ]
-            # bbbf = max(bids_below_fair_value)\
-            #     if bids_below_fair_value\
-            #     else math.floor(fair_value - make_buy_width)
-            # make_buy_amt = min(pos_lim - (pos + buy_amt), 20)
-            # if make_buy_amt > 0:
-            #     orders.append(Order(
-            #         product, bbbf + 1, make_buy_amt))
-            #     print(f"[MAKE BID] {make_buy_amt} {product} @ {bbbf + 1}")
+            bids_below_fair_value = [
+                price for price in order_depth[product].buy_orders
+                if price < fair_value - make_buy_width
+            ]
+            bbbf = max(bids_below_fair_value)\
+                if bids_below_fair_value\
+                else math.floor(fair_value - make_buy_width)
+            make_buy_amt = min(pos_lim - (pos + buy_amt), 20)
+            if make_buy_amt > 0:
+                orders.append(Order(
+                    product, bbbf + 1, make_buy_amt))
+                print(f"[MAKE BID] {make_buy_amt} {product} @ {bbbf + 1}")
 
         return orders
+
+    # ============================
+    # MAGNIFICENT_MACARONS SECTION
+    # ============================
+    # === HELPER FUNCTIONS ===
+
+    def _remove_volume(self, book: Dict[int, int], price: int, qty: int):
+        """Subtract qty at price; delete level if ≤0."""
+        if price in book:
+            book[price] -= qty
+            if book[price] <= 0:
+                del book[price]
+
+    def MAGNIFICENT_MACARONS_order(
+            self,
+            order_depth: OrderDepth,
+            observation: Observation,
+            pos: int,
+    ) -> List[Order]:
+        """
+        """
+        orders = []
+        macaron_order_depth = order_depth["MAGNIFICENT_MACARONS"]
+
+        # shadow‑copy the book so we can prune hits without mutating the real one
+        local_buys = dict(macaron_order_depth.buy_orders)
+        local_sells = dict(macaron_order_depth.sell_orders)
+
+        pos_lim = self.PRODUCT_HYPERPARAMS["MAGNIFICENT_MACARONS"]["pos_lim"]
+        take_buy_width = self.PRODUCT_HYPERPARAMS["MAGNIFICENT_MACARONS"].get(
+            "take_buy_width", 1)
+        take_sell_width = self.PRODUCT_HYPERPARAMS["MAGNIFICENT_MACARONS"].get(
+            "take_sell_width", 1)
+        make_width = self.PRODUCT_HYPERPARAMS["MAGNIFICENT_MACARONS"].get(
+            "make_width", 2)
+        conversion_limit = self.PRODUCT_HYPERPARAMS["MAGNIFICENT_MACARONS"].get(
+            "conversion_limit", 10)
+        position_threshold = self.PRODUCT_HYPERPARAMS["MAGNIFICENT_MACARONS"].get(
+            "position_threshold", 50)
+        arbitrage_width = self.PRODUCT_HYPERPARAMS["MAGNIFICENT_MACARONS"].get(
+            "arbitrage_width", 1)
+        conversion_amt = 0
+
+        # DETERMINE CURRENT MODE
+        sunlight_index = observation.sunlightIndex
+        csi = self.PRODUCT_HYPERPARAMS["MAGNIFICENT_MACARONS"][
+            "critical_sunlight_index"]
+
+        if sunlight_index > csi:
+            mode = "STANDARD"
+        else:
+            mode = "PANIC"
+
+        # === STANDARD MODE ===
+        if mode == "STANDARD":
+            # === EXCHANGE ARBITRAGE ORDERS ===
+            sell_amt = 0
+            buy_amt = 0
+            arb_buy_qty = 0
+            arb_sell_qty = 0
+
+            implied_bid = (
+                observation.bidPrice
+                - observation.transportFees
+                - observation.exportTariff
+                - self.PRODUCT_HYPERPARAMS[
+                    "MAGNIFICENT_MACARONS"]["storage_cost"]
+            )
+            implied_ask = (
+                observation.askPrice
+                + observation.transportFees
+                + observation.importTariff
+            )
+
+            local_best_ask = min(local_sells.keys(), default=float("inf"))
+            local_best_bid = max(local_buys.keys(), default=0)
+
+            # HITTING THE SELL ORDERS (buy local & export)
+            if local_best_ask < implied_bid - arbitrage_width:
+                arb_buy_qty = min(
+                    local_sells[local_best_ask],
+                    conversion_limit,
+                    pos_lim - pos
+                )
+                orders.append(Order(
+                    "MAGNIFICENT_MACARONS", local_best_ask, arb_buy_qty))
+                conversion_amt -= arb_buy_qty
+                buy_amt += arb_buy_qty
+                self._remove_volume(local_sells, local_best_ask, arb_buy_qty)
+
+            # HITTING THE BUY ORDERS (sell local & import)
+            if local_best_bid > implied_ask + arbitrage_width:
+                arb_sell_qty = min(
+                    local_buys[local_best_bid],
+                    conversion_limit,
+                    pos + pos_lim
+                )
+                orders.append(Order(
+                    "MAGNIFICENT_MACARONS", local_best_bid, -arb_sell_qty))
+                conversion_amt += arb_sell_qty
+                sell_amt += arb_sell_qty
+                self._remove_volume(local_buys, local_best_bid, arb_sell_qty)
+
+            # === CALCULATE FAIR VALUE ===
+            fair_value = self.market_maker_mid(
+                "MAGNIFICENT_MACARONS", order_depth)
+
+            # === TAKE ===
+            pos_after_arb = pos + arb_buy_qty - arb_sell_qty + conversion_amt
+            take_sell_amt = 0
+            take_buy_amt = 0
+
+            if local_buys:
+                best_bid = max(local_buys.keys())
+                if best_bid > fair_value + take_sell_width:
+                    take_sell_amt = round(min(
+                        local_buys[best_bid], pos_after_arb + pos_lim) * 0.8)
+                    sell_amt += take_sell_amt
+                    orders.append(Order(
+                        "MAGNIFICENT_MACARONS",
+                        round(best_bid), -take_sell_amt))
+                    self._remove_volume(local_buys, best_bid, take_sell_amt)
+                    print(f"[TAKE OFFER] {take_sell_amt} @ {best_bid}")
+
+            if local_sells:
+                best_ask = min(local_sells.keys())
+                if best_ask < fair_value - take_buy_width:
+                    take_buy_amt = round(min(abs(local_sells[best_ask]),
+                                             pos_after_arb + pos_lim) * 0.8)
+                    buy_amt += take_buy_amt
+                    orders.append(Order(
+                        "MAGNIFICENT_MACARONS", round(best_ask), take_buy_amt))
+                    self._remove_volume(local_sells, best_ask, take_buy_amt)
+                    print(f"[TAKE BID] {take_buy_amt} @ {best_ask}")
+
+            pos_after_take = pos_after_arb + take_buy_amt - take_sell_amt
+
+            # === CLEAR ===
+            clear_buy_amt = 0
+            clear_sell_amt = 0
+            clear_width = self.PRODUCT_HYPERPARAMS["MAGNIFICENT_MACARONS"].get(
+                "clear_width", 1)
+            fair_ask = math.ceil(fair_value)
+            fair_bid = math.floor(fair_value)
+
+            if pos_after_take > 0:
+                better_asks = [
+                    price for price in local_buys
+                    if price >= fair_ask - clear_width]
+                if better_asks:
+                    best_ask = max(better_asks)
+                    clear_sell_amt = min(local_buys[best_ask], pos_after_take + pos_lim)
+                    if clear_sell_amt > 0:
+                        sell_amt += clear_sell_amt
+                        orders.append(Order(
+                            "MAGNIFICENT_MACARONS", best_ask, -clear_sell_amt))
+                        self._remove_volume(
+                            local_buys, best_ask, clear_sell_amt)
+                        print(f"[CLEAR OFFER] {clear_sell_amt}\
+                               MACARONS @ {best_ask}")
+
+            elif pos_after_take < 0:
+                better_bids = [
+                    price for price in local_sells
+                    if price <= fair_bid + clear_width]
+                if better_bids:
+                    best_bid = min(better_bids)
+                    clear_buy_amt = min(
+                        abs(local_sells[best_bid]),
+                        -pos_after_take - position_threshold)
+                    if clear_buy_amt > 0:
+                        buy_amt += clear_buy_amt
+                        orders.append(Order(
+                            "MAGNIFICENT_MACARONS", best_bid, clear_buy_amt))
+                        self._remove_volume(
+                            local_sells, best_bid, clear_buy_amt)
+                        print(f"[CLEAR BID] {clear_buy_amt}\
+                              MACARONS @ {best_bid}")
+
+            pos_after_clear = pos_after_take + clear_buy_amt - clear_sell_amt
+
+            # === EMERGENCY CLEAR FALLBACK CLEARING ===
+            # EMERGENCY BUYBACK WHEN TOO SHORT
+            if pos_after_clear <= -position_threshold:
+                best_ask = min(local_sells.keys(), default=None)
+                if best_ask is not None:
+                    fallback_amt = min(
+                        abs(local_sells[best_ask]),
+                        abs(pos_after_clear), pos_lim)
+                    if fallback_amt > 0:
+                        orders.append(
+                            Order("MAGNIFICENT_MACARONS",
+                                  best_ask, fallback_amt))
+                        self._remove_volume(
+                            local_sells, best_ask, fallback_amt)
+                        print(f"[EMERGENCY BUYBACK] {fallback_amt}\
+                              MACARONS @ {best_ask}")
+                        pos_after_clear += fallback_amt
+
+            # EMERGENCY SELL WHEN TOO LONG
+            if pos_after_clear >= position_threshold:
+                best_bid = max(local_buys.keys(), default=None)
+                if best_bid is not None:
+                    fallback_amt = min(
+                        abs(local_buys[best_bid]),
+                        abs(pos_after_clear), pos_lim)
+                    if fallback_amt > 0:
+                        orders.append(Order(
+                            "MAGNIFICENT_MACARONS", best_bid, -fallback_amt))
+                        self._remove_volume(local_buys, best_bid, fallback_amt)
+                        print(f"[EMERGENCY SELL] {fallback_amt}\
+                              MACARONS @ {best_bid}")
+                        pos_after_clear -= fallback_amt
+
+            # === MAKE ===
+            # use the *original* book for spread calc, not the pruned one
+            orig_buys = macaron_order_depth.buy_orders
+            orig_sells = macaron_order_depth.sell_orders
+
+            asks_above_fair = [
+                p for p in orig_sells
+                if p > fair_value + make_width]
+            baaf = min(asks_above_fair)\
+                if asks_above_fair else math.ceil(fair_value + make_width)
+
+            bids_below_fair = [
+                p for p in orig_buys
+                if p < fair_value - make_width]
+            bbbf = max(bids_below_fair)\
+                if bids_below_fair else math.floor(fair_value - make_width)
+
+            # enforce non‑crossing spread against the true bests
+            true_best_bid = max(orig_buys.keys(), default=0)
+            true_best_ask = min(orig_sells.keys(), default=float("inf"))
+            if bbbf + make_width >= baaf - make_width:
+                baaf = math.ceil(true_best_ask - make_width)
+                bbbf = math.floor(true_best_bid + make_width)
+
+            # pad spread near limits…
+            spread_pad = 1 if abs(pos_after_clear) > pos_lim * 0.9 else 0
+            baaf += spread_pad
+            bbbf -= spread_pad
+
+            size_cap = 35
+            make_sell_limit = pos_lim + pos_after_clear
+            make_buy_limit = pos_lim - pos_after_clear
+            size = min(make_sell_limit, make_buy_limit, size_cap)
+
+            if make_sell_limit > 0:
+                orders.append(
+                    Order("MAGNIFICENT_MACARONS", baaf - make_width, -size))
+            if make_buy_limit > 0:
+                orders.append(
+                    Order("MAGNIFICENT_MACARONS", bbbf + make_width, size))
+
+        return orders, conversion_amt
 
     # ============================
     # MAIN
@@ -1353,6 +1799,11 @@ class Trader:
                 squid_ink_historical
             )
 
+        p1_buy_amt = 0
+        p1_sell_amt = 0
+        p2_buy_amt = 0
+        p2_sell_amt = 0
+
         if "DJEMBES" in order_depth\
             and "PICNIC_BASKET1" in order_depth\
                 and "PICNIC_BASKET2" in order_depth:
@@ -1393,9 +1844,20 @@ class Trader:
             for order in orders:
                 result.setdefault(order.symbol, []).append(order)
 
-        # if "MAGNIFICENT_MACARONS" in order_depth:
-        #     pos = positions.get("MAGNIFICENT_MACARONS", 0)
-        #     pass
+        if "MAGNIFICENT_MACARONS" in order_depth:
+            pos = positions.get("MAGNIFICENT_MACARONS", 0)
+            observation = state.observations.conversionObservations[
+                "MAGNIFICENT_MACARONS"]
+            orders, conversions = self.MAGNIFICENT_MACARONS_order(
+                order_depth,
+                observation,
+                pos,
+            )
+            # print(f"""sunlight index: {
+            #     state.observations.conversionObservations[
+            #         'MAGNIFICENT_MACARONS'].sunlightIndex}""")
+            result["MAGNIFICENT_MACARONS"] = orders
+            print(f"position: {pos}")
 
         # === PICKLE TRADER DATA ===
         traderData["kelp_historical"] = kelp_historical
