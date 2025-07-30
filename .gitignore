@@ -46,3 +46,8 @@ Thumbs.db
 # log
 *.log
 *.csv
+
+./rounds/common/
+./rounds/round1/test_algo_cped.py
+./rounds/round5/eda/master_csv/
+**/eda/
