@@ -127,12 +127,8 @@ With regime tagging in place, the conversion strategy was refined. Effective con
 **Risk Management via Storage Costs**
 A daily storage cost for holding macaron inventory was factored into trade decisions. For any trade, if the expected gain (given the projected duration of the panic-bull regime) did not exceed the expected storage cost, the trade was skipped — even during bullish regimes. This adjustment prevented overexposure to inventory risk and eliminated low-margin trades that could erode returns.
 
-**Results**
-The sunlight index–based regime detection introduced a robust context filter for conversions, improving both trade selection and timing. Incorporating storage costs as a gating condition further balanced the risk profile. Together, these adjustments produced stronger, more resilient performance compared to a buy-and-hold baseline.
-
-
 ### Results
-
+The sunlight index–based regime detection introduced a robust context filter for conversions, improving both trade selection and timing. Incorporating storage costs as a gating condition further balanced the risk profile. Together, these adjustments produced stronger, more resilient performance compared to a buy-and-hold baseline.
 
 ---
 
