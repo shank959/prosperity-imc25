@@ -1,0 +1,21 @@
+/* Base reset + app shell */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box
+    }
+
+    body {
+      background: #1a1a2e;
+      color: #e0e0e0;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      overflow: hidden
+    }
+
+    .app {
+      display: grid;
+      grid-template-rows: auto 1fr 180px;
+      grid-template-columns: 1fr 380px;
+      height: 100vh
+    }

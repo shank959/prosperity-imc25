@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prosperity 4 — Trading Analyzer</title>
+    <link rel="stylesheet" href="styles/base.css">
+  <link rel="stylesheet" href="styles/layout.css">
+  <link rel="stylesheet" href="styles/controls.css">
+  <link rel="stylesheet" href="styles/tabs.css">
+  <link rel="stylesheet" href="styles/charts.css">
+  <link rel="stylesheet" href="styles/modals.css">
+</head>
+
+<body>
+  <div class="app">
+
+    <!-- ====== CONTROLS BAR ====== -->
+    <div class="controls">
+      <!-- File loaders -->
+      <span style="font-size:9px;color:#888;white-space:nowrap">Files:</span>
+      <label title="output.log from backtester (contains OB + own trades + bot prints)">Log: <input type="file"
+          id="logFile" accept=".log,.txt"></label>
+      <label title="prices_round_N_day_X.csv — select multiple days at once">Prices: <input type="file" id="pricesFile"
+          accept=".csv" multiple></label>
+      <label title="trades_round_N_day_X.csv — market history, select multiple days">Trades: <input type="file"
+          id="tradesFile" accept=".csv" multiple></label>
+      <label
+        title="JSON file downloaded from the IMC Prosperity website after submitting your bot (contains activitiesLog, tradeHistory, graphLog, positions, profit)">IMC:
+        <input type="file" id="officialJsonFile" accept=".json,.log"></label>
+      <div class="ctrl-sep"></div>
+
+      <!-- Selectors -->
+      <label>Prod: <select id="productSelect">
+          <option value="">--</option>
+        </select></label>
+      <label>Day: <select id="daySelect">
+          <option value="all">All</option>
+        </select></label>
+      <label title="Subtract fair value to center chart at 0">Norm: <select id="normSelect">
+          <option value="raw">Raw</option>
+          <option value="fair">− Fair</option>
+          <option value="pct">% Fair</option>
+        </select></label>
+      <label title="Override fair value model for non-fixed products">FV: <select id="fvMethodSelect">
+          <option value="productDefault">Product default</option>
+          <option value="outerWallMid">OuterWallMid</option>
+          <option value="emaOuterWallMid">EMA(OuterWallMid)</option>
+          <option value="kalmanOU">Kalman(OU)</option>
+          <option value="ouPrior">OU Prior</option>
+          <option value="obiAdjusted">OBI-Adjusted</option>
+          <option value="bookVwap">BookVwap</option>
+          <option value="emaBookVwap">EMA(BookVwap)</option>
+          <option value="microprice">Microprice</option>
+          <option value="emaMicroprice">EMA(Microprice)</option>
+          <option value="rawMid">Raw L1 mid</option>
+        </select></label>
+      <span id="emaAlphaParams" style="display:none">
+        <label title="EMA smoothing factor for all EMA-based FV models (higher = faster response, lower = smoother)">EMAα:<input type="number"
+            id="fvEmaAlphaInput" value="0.35" min="0.01" max="0.99" step="0.01" style="width:48px"></label>
+      </span>
+      <span id="kalmanParams" style="display:none">
+        <label title="Kalman OU: mean-reversion speed toward anchor (higher = more pull)">κ:<input type="number"
+            id="fvKalmanKappaInput" value="0.05" min="0.001" max="1.0" step="0.01" style="width:48px"></label>
+        <label title="Kalman OU: process noise variance (how much true value moves per tick)">Q:<input type="number"
+            id="fvKalmanQInput" value="1.0" min="0.01" max="100" step="0.1" style="width:48px"></label>
+        <label title="Kalman OU: observation noise variance (wall_mid jitter)">R:<input type="number"
+            id="fvKalmanRInput" value="50.0" min="0.1" max="500" step="1" style="width:48px"></label>
+      </span>
+      <span id="ouPriorParams" style="display:none">
+        <label title="OU Prior: EMA observation weight (higher = trust market more, lower = trust OU prior more)">α:<input type="number"
+            id="fvOuPriorAlphaInput" value="0.35" min="0.01" max="0.99" step="0.01" style="width:48px"></label>
+        <label title="OU Prior: mean-reversion speed toward anchor">κ:<input type="number"
+            id="fvOuPriorKappaInput" value="0.05" min="0.001" max="1.0" step="0.01" style="width:48px"></label>
+      </span>
+      <span id="obiParams" style="display:none">
+        <label title="OBI-Adjusted: λ scales how much L1 order-book imbalance shifts the OuterWallMid fair value (0 = no adjustment, 1 = shift by full half-spread × imbalance)">λ:<input type="number"
+            id="fvObiLambdaInput" value="0.5" min="0" max="5" step="0.1" style="width:48px"></label>
+      </span>
+      <div class="ctrl-sep"></div>
+
+      <!-- Trade markers: own fills -->
+      <span style="font-size:9px;color:#888">Own:</span>
+      <button class="toggle-btn active TB" id="tf-TB" data-type="TB" title="Take Buy — lifts the ask (aggressive buy) × yellow">TB×</button>
+      <button class="toggle-btn active TS" id="tf-TS" data-type="TS" title="Take Sell — hits the bid (aggressive sell) × purple">TS×</button>
+      <button class="toggle-btn active MB" id="tf-MB" data-type="MB" title="Make Buy — passive bid filled ★ purple">MB★</button>
+      <button class="toggle-btn active MS" id="tf-MS" data-type="MS" title="Make Sell — passive ask filled ★ orange">MS★</button>
+      <button class="toggle-btn active CB" id="tf-CB" data-type="CB" title="Clear Buy — clear short ◆ green">CB◆</button>
+      <button class="toggle-btn active CS" id="tf-CS" data-type="CS" title="Clear Sell — clear long ◆ green">CS◆</button>
+      <button class="toggle-btn active MQ" id="tf-MQ" title="Show/hide your MM quotes (★ make, ◆ clear) on the chart">MQ★◆</button>
+      <span style="font-size:9px;color:#888;margin-left:2px">Bot:</span>
+      <button class="toggle-btn active M" id="tf-M" data-type="M" title="M = Inside-spread trade (□)">M□</button>
+      <button class="toggle-btn active S" id="tf-S" data-type="S" title="S = Small taker ≤5 qty (▲)">S▲</button>
+      <button class="toggle-btn active B" id="tf-B" data-type="B" title="B = Big taker >5 qty (▲)">B▲</button>
+      <div class="ctrl-sep"></div>
+
+      <!-- OB level toggles -->
+      <span style="font-size:9px;color:#888">OB:</span>
+      <button class="toggle-btn active L1" id="ob-L1" data-level="0" title="Show L1 (best bid/ask) lines">L1</button>
+      <button class="toggle-btn active L2" id="ob-L2" data-level="1" title="Show L2 lines (faded)">L2</button>
+      <button class="toggle-btn active L3" id="ob-L3" data-level="2" title="Show L3 lines (faded)">L3</button>
+      <div class="ctrl-sep"></div>
+
+      <!-- WallMid control (hidden: FV now uses outermost levels, no volume filter) -->
+      <label style="display:none"
+        title="Unused: fair value now uses OuterWallMid = (min_bid + max_ask) / 2">WallMid≥<input
+          type="number" id="mmSizeInput" value="15" min="1" max="100" style="width:38px"></label>
+      <label title="Trades at or above this quantity get enlarged markers on the main chart (0 = off)">Big≥<input
+          type="number" id="highlightQtyMin" value="0" min="0" max="999" style="width:38px"></label>
+      <label title="Max points rendered (higher = slower but more detail)">Pts:<input type="range" id="downsample"
+          min="500" max="10000" value="3000" step="500"><span id="dsLabel">3k</span></label>
+
+      <button class="export-btn" id="exportBtn" title="Export analysis JSON for Claude to read">Export</button>
+      <button class="toggle-btn" id="guideBtn" title="Usage guide"
+        style="margin-left:4px;color:#4cc9f0;border-color:#4cc9f0">?</button>
+      <div class="quick-stats" id="quickStats"></div>
+    </div>
+
+    <!-- ====== MAIN CHART ====== -->
+    <div class="main-chart" id="mainChartDiv">
+      <canvas id="mainCanvas"></canvas>
+    </div>
+
+    <!-- ====== POSITION / PnL ====== -->
+    <div class="pos-pnl" id="posPnlDiv">
+      <canvas id="posPnlCanvas"></canvas>
+    </div>
+
+    <!-- ====== SIDEBAR ====== -->
+    <div class="sidebar">
+      <div class="tab-bar">
+        <button class="active" data-tab="trades">Trades</button>
+        <button data-tab="spread">Spread</button>
+        <button data-tab="returns">Returns</button>
+        <button data-tab="bots">Micro</button>
+        <button data-tab="mm">MM Opt</button>
+        <button data-tab="strategy">Strategy</button>
+        <button data-tab="signals">Signals</button>
+        <button data-tab="dynamics">Dynamics</button>
+        <button data-tab="botIntel">Bot Intel</button>
+      </div>
+
+      <!-- Trades tab -->
+      <div class="tab-content active" data-tab="trades" id="tradesTab">
+        <div class="trade-filters">
+          <label>Side: <select id="filterSide">
+              <option value="all">All</option>
+              <option value="buy">Buy</option>
+              <option value="sell">Sell</option>
+              <option value="own">Own</option>
+            </select></label>
+          <label>Qty≥<input type="number" id="fQtyMin" value="0" min="0"></label>
+          <label>Qty≤<input type="number" id="fQtyMax" value="999"></label>
+          <label>Dist≥<input type="number" id="fDistMin" value="0" step="0.5"></label>
+          <label title="Filter by trader name (local output.log only — IMC site JSON hides trader names)">Who: <select
+              id="filterTrader">
+              <option value="">All</option>
+            </select></label>
+        </div>
+        <div class="explain-box"><b>Trade List:</b> every trade in the visible window. <b>F</b>=own fill, <b>M</b>=maker
+          (inside spread), <b>S</b>=small taker ≤5, <b>B</b>=big taker &gt;5, <b>I</b>=informed. <b>Edge</b>=price−FV:
+          <span class="good">negative buy = bought below fair (good)</span>, <span class="good">positive sell = sold
+            above fair (good)</span>. <span class="warn">Who filter only works with local output.log — IMC site JSON
+            hides trader names.</span></div>
+        <div class="trade-hdr"><span>Time</span><span>Tp</span><span>Price</span><span>Qty</span><span>Edge</span></div>
+        <div id="tradeList"></div>
+      </div>
+
+      <!-- Spread tab -->
+      <div class="tab-content" data-tab="spread" id="spreadTab"></div>
+      <!-- Returns tab -->
+      <div class="tab-content" data-tab="returns" id="returnsTab"></div>
+      <!-- Bots tab -->
+      <div class="tab-content" data-tab="bots" id="botsTab"></div>
+      <!-- MM Optimizer tab -->
+      <div class="tab-content" data-tab="mm" id="mmTab"></div>
+      <!-- Strategy tab -->
+      <div class="tab-content" data-tab="strategy" id="strategyTab"></div>
+      <!-- Signals tab -->
+      <div class="tab-content" data-tab="signals" id="signalsTab"></div>
+      <!-- Dynamics tab -->
+      <div class="tab-content" data-tab="dynamics" id="dynamicsTab"></div>
+      <div class="tab-content" data-tab="botIntel" id="botIntelTab"></div>
+
+      <!-- Log Viewer (always visible, synced to hover) -->
+      <div class="log-viewer">
+        <div class="log-header">Bot Log @ T=<span id="logTs">hover chart</span></div>
+        <div id="logContent"><span style="color:#333">Hover over main chart to see log output</span></div>
+      </div>
+    </div>
+
+  </div><!-- .app -->
+
+  <!-- Tooltip -->
+  <div id="tooltip"></div>
+
+  <!-- Guide Modal -->
+  <div class="modal-overlay" id="guideModal">
+    <div class="modal" style="max-width:640px">
+      <h3>Dashboard Guide</h3>
+      <div style="overflow-y:auto;flex:1;font-size:10px;line-height:1.8;color:#ccc">
+        <div style="color:#e94560;font-weight:bold;margin:6px 0 2px">Loading Data</div>
+        <b style="color:#4cc9f0">Separate CSV files (no bot runs yet):</b> Drop or select
+        <code>prices_round_N_day_X.csv</code> into <b>Prices</b> (select multiple days at once). Drop
+        <code>trades_round_N_day_X.csv</code> into <b>Trades</b>. These are market-history files from IMC — no own-trade
+        markers will appear.<br>
+        <b style="color:#4cc9f0">output.log (after running bot):</b> Drop the single <code>output.log</code> into
+        <b>Log</b>. This auto-loads OB data, market trades, your bot's quotes (★/◆), own fills (× take, ○ make,
+        ◆ clear), and print output in the Log Viewer.
+        <div style="color:#e94560;font-weight:bold;margin:8px 0 2px">Chart Navigation</div>
+        <b>Scroll wheel</b> — zoom in/out horizontally (Y auto-fits)<br>
+        <b>Shift + drag</b> — pan left/right<br>
+        <b>Box drag</b> — zoom to selection<br>
+        <b>Double-click</b> — reset to full view
+        <div style="color:#e94560;font-weight:bold;margin:8px 0 2px">Chart Layers</div>
+        <span style="color:#4488ff">━</span> <b>Blue lines</b> — bid prices (L1 solid, L2/L3 faded)<br>
+        <span style="color:#ff4444">━</span> <b>Red lines</b> — ask prices (L1 solid, L2/L3 faded)<br>
+        <span style="color:#44ff88">- -</span> <b>Green dashed</b> — fair value (model selectable via FV dropdown)<br>
+        <span style="color:#ffffff">━</span> <b>White line</b> — mid price<br>
+        <b>★ Stars</b> — your make quotes (<span style="color:#4488ff">blue</span>=bid, <span style="color:#ff8800">orange</span>=ask)<br>
+        <b>◆ Diamonds</b> — your clear quotes (<span style="color:#44dddd">teal</span>=bid, <span style="color:#cc44cc">magenta</span>=ask)<br>
+        <b style="color:#e94560">Own fills:</b><br>
+        <b>TB/TS ×</b> — take fills (<span style="color:#ffee00">yellow</span>=ask take, <span style="color:#aa44ff">purple</span>=bid take)<br>
+        <b>MB/MS ★</b> — make fills (<span style="color:#aa44ff">purple</span>=buy, <span style="color:#ff8800">orange</span>=sell)<br>
+        <b>CB/CS ◆</b> — clear fills (<span style="color:#44ff88">green</span> both sides)<br>
+        <b style="color:#e94560">Bot trades:</b><br>
+        <b>M □</b> <span style="color:#aa88ff">purple square</span> — inside-spread trade<br>
+        <b>S/B ▲</b> — taker trades (small ≤5, big &gt;5)<br>
+        <div style="color:#e94560;font-weight:bold;margin:8px 0 2px">Fair Value Model (Extensible)</div>
+        Use the <b>FV</b> dropdown to switch fair-value methods for dynamic products:
+        <code>OuterWallMid</code>, <code>EMA(OuterWallMid)</code>, or <code>Raw Mid</code>.
+        <b>EMA(OuterWallMid)</b> smooths jagged wall-mid jumps from one-sided books.
+        <b>EMAα</b> controls smoothing (higher=faster, lower=smoother).<br>
+        <div style="color:#e94560;font-weight:bold;margin:8px 0 2px">IMC Official JSON (IMC site output)</div>
+        After submitting your bot to the IMC Prosperity website, download the result JSON (e.g.
+        <code>72288.json</code>).
+        Drop it into <b>IMC</b>. Loads OB data, trades, and print logs. Also adds: total profit in quick stats, final
+        positions per product, and a pre-sampled PnL curve (graphLog). <b>Note:</b> official format does NOT include
+        trader names (only "" or "SUBMISSION") — the <b>Who</b> filter won't have names.<br>
+        <div style="color:#e94560;font-weight:bold;margin:8px 0 2px">Trader Filter &amp; Large Trade Highlighting</div>
+        <b>Who</b> filter (Trades tab): after loading a local output.log, select a specific bot/trader to see only their
+        trades and highlight them in <span style="color:#ffee00">yellow</span> on the main chart.<br>
+        <b>Big≥</b> (controls bar): set a minimum qty threshold — trades at or above this size get <span
+          style="color:#ff8800">enlarged markers with a glow</span> on the main chart. Use to spot large informed
+        trades.<br>
+        <div style="color:#e94560;font-weight:bold;margin:8px 0 2px">Analytics Tabs</div>
+        <b>Spread</b> — bid-ask spread over time + distribution stats. P90 = safe quote width.<br>
+        <b>Returns</b> — autocorrelation (negative lag-1 = mean-reverting!), return distribution<br>
+        <b>Bots</b> — trade-size signatures (bot fingerprints), daily range, price impact<br>
+        <b>MM Opt</b> — grid-search take_width × make_width, find best simulated PnL<br>
+        <b>Strategy</b> — PnL slope, position sawtooth health, fill edge scatter, spread zones, qty distribution<br>
+        <div style="color:#e94560;font-weight:bold;margin:8px 0 2px">Export for Claude</div>
+        Click <b>Export</b> to get a structured JSON with spread stats, autocorrelation, trade patterns, strategy
+        analysis (adverse selection, position drift, PnL slope), and insights. Paste into Claude for strategy
+        recommendations.
+      </div>
+      <div class="btns"><button onclick="document.getElementById('guideModal').classList.remove('show')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Export Modal -->
+  <div class="modal-overlay" id="exportModal">
+    <div class="modal">
+      <h3>Analysis Export — paste to Claude for strategy insights</h3>
+      <textarea id="exportText" readonly spellcheck="false"></textarea>
+      <div class="btns">
+        <button
+          onclick="navigator.clipboard.writeText(document.getElementById('exportText').value).then(()=>this.textContent='Copied!').catch(()=>this.textContent='Copy failed')">Copy</button>
+        <button onclick="document.getElementById('exportModal').classList.remove('show')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="loading" id="loading">
+    <div>Parsing data...</div>
+    <div class="sub" id="loadingSub">Reading file</div>
+  </div>
+  <div class="drop-zone" id="dropZone">Drop file here</div>
+
+  
+  <script src="js/core/config.js"></script>
+  <script src="js/core/state.js"></script>
+  <script src="js/core/stats.js"></script>
+  <script src="js/core/helpers.js"></script>
+  <script src="js/core/fair_value.js"></script>
+  <script src="js/render/canvas.js"></script>
+  <script src="js/render/primitives.js"></script>
+  <script src="js/render/chart_main.js"></script>
+  <script src="js/render/chart_pos_pnl.js"></script>
+  <script src="js/render/tooltip_log.js"></script>
+  <script src="js/analytics/spread.js"></script>
+  <script src="js/analytics/returns.js"></script>
+  <script src="js/analytics/microstructure.js"></script>
+  <script src="js/analytics/mm_optimizer.js"></script>
+  <script src="js/analytics/strategy.js"></script>
+  <script src="js/analytics/signals.js"></script>
+  <script src="js/analytics/dynamics.js"></script>
+  <script src="js/analytics/export.js"></script>
+  <script src="js/analytics/bot_intel.js"></script>
+  <script src="js/ui/trade_log.js"></script>
+  <script src="js/ui/quick_stats.js"></script>
+  <script src="js/ui/tabs.js"></script>
+  <script src="js/ui/controls.js"></script>
+  <script src="js/data/prices_parser.js"></script>
+  <script src="js/data/trades_parser.js"></script>
+  <script src="js/data/logs_parser.js"></script>
+  <script src="js/data/official_json_parser.js"></script>
+  <script src="js/data/loaders.js"></script>
+  <script src="js/bootstrap.js"></script>
+</body>
+
+</html>

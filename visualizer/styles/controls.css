@@ -1,0 +1,176 @@
+/* Controls bar and toggles */
+    /* ── Controls Bar ── */
+    .controls {
+      grid-column: 1/-1;
+      background: #0f3460;
+      padding: 5px 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      border-bottom: 2px solid #e94560
+    }
+
+    .controls label {
+      font-size: 10px;
+      color: #aaa;
+      display: flex;
+      align-items: center;
+      gap: 3px
+    }
+
+    .controls select,
+    .controls input[type=file] {
+      background: #16213e;
+      color: #e0e0e0;
+      border: 1px solid #2a2a4a;
+      padding: 2px 4px;
+      font-size: 10px;
+      font-family: inherit
+    }
+
+    .controls input[type=range] {
+      width: 70px;
+      vertical-align: middle
+    }
+
+    .controls input[type=number] {
+      background: #16213e;
+      color: #e0e0e0;
+      border: 1px solid #2a2a4a;
+      padding: 2px 3px;
+      font-size: 10px;
+      width: 45px;
+      font-family: inherit
+    }
+
+    .ctrl-sep {
+      width: 1px;
+      height: 22px;
+      background: #2a2a4a;
+      margin: 0 2px
+    }
+
+    /* Toggle buttons */
+    .toggle-btn {
+      background: #16213e;
+      color: #666;
+      border: 1px solid #2a2a4a;
+      padding: 2px 7px;
+      cursor: pointer;
+      font-size: 10px;
+      font-family: inherit;
+      transition: all .15s
+    }
+
+    .toggle-btn.active {
+      color: #fff;
+      border-color: currentColor
+    }
+
+    .toggle-btn.active.TB {
+      color: #ffee00;
+      border-color: #ffee00;
+      background: #ffee0022
+    }
+
+    .toggle-btn.active.TS {
+      color: #aa44ff;
+      border-color: #aa44ff;
+      background: #aa44ff22
+    }
+
+    .toggle-btn.active.MB {
+      color: #aa44ff;
+      border-color: #aa44ff;
+      background: #aa44ff22
+    }
+
+    .toggle-btn.active.MS {
+      color: #ff8800;
+      border-color: #ff8800;
+      background: #ff880022
+    }
+
+    .toggle-btn.active.CB {
+      color: #44ff88;
+      border-color: #44ff88;
+      background: #44ff8822
+    }
+
+    .toggle-btn.active.CS {
+      color: #44ff88;
+      border-color: #44ff88;
+      background: #44ff8822
+    }
+
+    .toggle-btn.active.MQ {
+      color: #ffffff;
+      border-color: #ffffff;
+      background: #ffffff22
+    }
+
+    .toggle-btn.active.M {
+      color: #aa88ff;
+      border-color: #aa88ff;
+      background: #aa88ff22
+    }
+
+    .toggle-btn.active.S {
+      color: #88bbff;
+      border-color: #88bbff;
+      background: #88bbff22
+    }
+
+    .toggle-btn.active.B {
+      color: #ff4488;
+      border-color: #ff4488;
+      background: #ff448822
+    }
+
+    .toggle-btn.active.L1 {
+      color: #4cc9f0;
+      border-color: #4cc9f0;
+      background: #4cc9f022
+    }
+
+    .toggle-btn.active.L2 {
+      color: #4cc9f0;
+      border-color: #4cc9f0;
+      background: #4cc9f022;
+      opacity: .75
+    }
+
+    .toggle-btn.active.L3 {
+      color: #4cc9f0;
+      border-color: #4cc9f0;
+      background: #4cc9f022;
+      opacity: .5
+    }
+
+    .export-btn {
+      background: #e94560;
+      color: #fff;
+      border: none;
+      padding: 3px 10px;
+      cursor: pointer;
+      font-size: 10px;
+      font-family: inherit;
+      margin-left: auto
+    }
+
+    .export-btn:hover {
+      background: #ff6b80
+    }
+
+    .quick-stats {
+      font-size: 10px;
+      color: #aaa;
+      display: flex;
+      gap: 10px;
+      margin-left: 6px
+    }
+
+    .quick-stats .val {
+      color: #4cc9f0
+    }

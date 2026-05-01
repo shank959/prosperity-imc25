@@ -1,0 +1,11 @@
+/* Layout containers */
+    /* ── Sidebar ── */
+    .sidebar {
+      grid-row: 2/4;
+      grid-column: 2;
+      border-left: 1px solid #2a2a4a;
+      background: #16213e;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden
+    }

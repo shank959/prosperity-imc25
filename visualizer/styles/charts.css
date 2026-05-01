@@ -1,0 +1,77 @@
+/* Chart panes, tooltip, and legends */
+    /* ── Main chart ── */
+    .main-chart {
+      grid-row: 2;
+      grid-column: 1;
+      position: relative;
+      background: #0d1117;
+      overflow: hidden
+    }
+
+    .main-chart canvas {
+      position: absolute;
+      top: 0;
+      left: 0
+    }
+
+    /* ── Pos/PnL ── */
+    .pos-pnl {
+      grid-row: 3;
+      grid-column: 1;
+      border-top: 1px solid #2a2a4a;
+      background: #0d1117;
+      position: relative;
+      overflow: hidden
+    }
+
+    .pos-pnl canvas {
+      position: absolute;
+      top: 0;
+      left: 0
+    }
+
+    /* Tooltip */
+    #tooltip {
+      position: fixed;
+      background: rgba(10, 20, 40, 0.97);
+      border: 1px solid #4cc9f0;
+      padding: 7px 10px;
+      font-size: 9px;
+      pointer-events: none;
+      display: none;
+      z-index: 100;
+      max-width: 320px;
+      line-height: 1.5;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5)
+    }
+
+    #tooltip b {
+      color: #4cc9f0
+    }
+
+    #tooltip .bid-c {
+      color: #4488ff
+    }
+
+    #tooltip .ask-c {
+      color: #ff4444
+    }
+
+    #tooltip .own-c {
+      color: #ff8800
+    }
+
+    /* Heatmap legend */
+    .heatmap-legend {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 8px;
+      margin: 3px 0
+    }
+
+    .heatmap-legend .bar {
+      height: 8px;
+      flex: 1;
+      background: linear-gradient(to right, #ff3333, #444, #33ff33)
+    }
