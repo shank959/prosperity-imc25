@@ -11,7 +11,7 @@ This repo gives you:
 
 You do not need to rewrite your trader for Monte Carlo mode. If your file already exposes a normal `Trader.run(state)` method, it should run.
 
-## What Works Right Now
+## What Works Right Now.
 
 - Tutorial-round products: `EMERALDS`, `TOMATOES`
 - One-day Monte Carlo sessions: `10,000` steps per session

@@ -103,5 +103,5 @@ analyzer/
 
 1. Update relevant `js/data/*_parser.js`.
 2. Keep snapshot/trade schema compatibility.
-3. Keep failures non-fatal and logged as warnings.
+3. Keep failures non-fatal and logged as warnings..
 
